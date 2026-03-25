@@ -160,7 +160,7 @@
             };
             this.state.settings.calendarMonthHeight = this.normalizeCalendarMonthHeight(this.state.settings.calendarMonthHeight);
             this.state.settings.themeMode = this.normalizeThemeMode(this.state.settings.themeMode);
-            this.state.boardColumns = this.normalizeBoardColumns(this.state.boardColumns);
+            this.state.boardColumns = this.createDefaultState().boardColumns.map((item) => ({ ...item }));
             const knownIds = new Set(this.state.tasks.map((task) => task.id));
             this.state.tasks = this.state.tasks.map((task) => {
                 const normalized = {
@@ -188,38 +188,6 @@
                 };
                 return normalized;
             });
-        }
-
-        normalizeBoardColumns(columns) {
-            const defaults = this.createDefaultState().boardColumns;
-            const result = [];
-            (Array.isArray(columns) ? columns : []).forEach((column) => {
-                if (!column || !column.id) {
-                    return;
-                }
-                const status = this.normalizeStatus(column.status);
-                const next = {
-                    id: column.id,
-                    title: (column.title || "新列").toString(),
-                    status,
-                    builtIn: !!column.builtIn
-                };
-                result.push(next);
-            });
-            defaults.forEach((item) => {
-                const existing = result.find((column) => column.status === item.status && column.builtIn);
-                if (existing) {
-                    existing.title = existing.title || item.title;
-                    existing.id = existing.id || item.id;
-                    existing.builtIn = true;
-                    return;
-                }
-                result.push({ ...item });
-            });
-            if (!result.length) {
-                return defaults;
-            }
-            return result;
         }
 
         normalizeStatus(status) {
@@ -333,6 +301,16 @@
                             --task-suite-item-text: #1f2937;
                             --task-suite-chip-bg: #eef2f7;
                             --task-suite-ghost-text: #6b7280;
+                            --task-suite-panel-tint: #f6f8fb;
+                            --task-suite-header-text: #0f172a;
+                            --task-suite-button-bg: #f8fafc;
+                            --task-suite-button-text: #0f172a;
+                            --task-suite-button-border: #cfd8e3;
+                            --task-suite-day-title-bg: #f8fafc;
+                            --task-suite-day-title-text: #0f172a;
+                            --task-suite-form-bg: #f8fafc;
+                            --task-suite-gantt-panel-bg: #f6f8fb;
+                            --task-suite-gantt-track-bg: #fbfcfe;
                             height: 100%;
                             display: flex;
                             flex-direction: column;
@@ -354,6 +332,16 @@
                             --task-suite-item-text: #eef3fb;
                             --task-suite-chip-bg: #222a36;
                             --task-suite-ghost-text: #aab4c3;
+                            --task-suite-panel-tint: #1a202a;
+                            --task-suite-header-text: #f8fbff;
+                            --task-suite-button-bg: #1d2430;
+                            --task-suite-button-text: #f4f8ff;
+                            --task-suite-button-border: #3a4558;
+                            --task-suite-day-title-bg: #1b2230;
+                            --task-suite-day-title-text: #f8fbff;
+                            --task-suite-form-bg: #1c2330;
+                            --task-suite-gantt-panel-bg: #151b24;
+                            --task-suite-gantt-track-bg: #1a2230;
                         }
                         .task-suite-toolbar {
                             display: flex;
@@ -368,13 +356,16 @@
                             border-radius: 8px 8px 0 0;
                             padding: 0 6px;
                             flex: 1;
-                            background: var(--task-suite-surface);
+                            background: var(--task-suite-panel-tint);
                         }
                         .task-suite-tabs .item {
                             min-height: 34px;
+                            color: var(--task-suite-text-soft);
                         }
                         .task-suite-tab.item--focus {
-                            color: var(--task-suite-text);
+                            color: var(--task-suite-header-text);
+                            background: var(--task-suite-surface);
+                            border-radius: 6px 6px 0 0;
                         }
                         .task-suite-content {
                             min-height: 0;
@@ -403,13 +394,17 @@
                         }
                         .task-suite-field > label {
                             font-size: 12px;
-                            color: var(--task-suite-text-soft);
+                            color: var(--task-suite-header-text);
                         }
                         .task-suite-card {
                             border-radius: 6px;
                             padding: 10px;
                             background: var(--task-suite-surface);
                             border: 1px solid var(--task-suite-border);
+                        }
+                        .task-suite-task-card {
+                            background: color-mix(in srgb, var(--task-suite-surface) 82%, var(--task-suite-panel-tint));
+                            box-shadow: inset 0 1px 0 color-mix(in srgb, var(--task-suite-line) 45%, transparent);
                         }
                         .task-suite-list {
                             display: flex;
@@ -439,12 +434,26 @@
                             flex-direction: column;
                             gap: 6px;
                             margin-top: 8px;
+                            padding: 8px;
+                            border: 1px solid var(--task-suite-border);
+                            border-radius: 8px;
+                            background: color-mix(in srgb, var(--task-suite-panel-tint) 72%, var(--task-suite-surface));
                         }
                         .task-suite-subtask {
                             display: flex;
                             align-items: center;
                             gap: 8px;
                             font-size: 13px;
+                            padding: 6px 8px;
+                            border-radius: 6px;
+                            background: color-mix(in srgb, var(--task-suite-form-bg) 70%, var(--task-suite-surface));
+                            color: var(--task-suite-item-text);
+                        }
+                        .task-suite-subtask-entry {
+                            display: flex;
+                            gap: 8px;
+                            align-items: center;
+                            padding-top: 4px;
                         }
                         .task-suite-columns {
                             display: grid;
@@ -465,21 +474,50 @@
                             justify-content: space-between;
                             align-items: center;
                             padding: 10px;
+                            color: var(--task-suite-header-text);
+                        }
+                        .task-suite-column-title-wrap {
+                            min-width: 0;
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                        }
+                        .task-suite-column-status-dot {
+                            width: 10px;
+                            height: 10px;
+                            border-radius: 999px;
+                            flex-shrink: 0;
+                            background: currentColor;
+                        }
+                        .task-suite-column-title {
+                            font-weight: 700;
+                            line-height: 1.1;
+                        }
+                        .task-suite-column-count {
+                            font-size: 12px;
+                            color: var(--task-suite-text-soft);
+                            padding: 2px 8px;
+                            border-radius: 999px;
+                            background: color-mix(in srgb, var(--task-suite-surface) 68%, transparent);
                         }
                         .task-suite-column-header--todo {
-                            background: color-mix(in srgb, var(--b3-theme-primary-lighter) 38%, var(--b3-theme-surface));
+                            background: color-mix(in srgb, var(--b3-theme-primary-lighter) 28%, var(--task-suite-panel-tint));
+                            color: var(--b3-theme-primary);
                         }
                         .task-suite-column-header--in-progress {
-                            background: color-mix(in srgb, var(--b3-card-info-background) 55%, var(--b3-theme-surface));
+                            background: color-mix(in srgb, var(--b3-card-info-background) 35%, var(--task-suite-panel-tint));
+                            color: var(--b3-card-info-color);
                         }
                         .task-suite-column-header--done {
-                            background: color-mix(in srgb, var(--b3-card-success-background) 55%, var(--b3-theme-surface));
+                            background: color-mix(in srgb, var(--b3-card-success-background) 35%, var(--task-suite-panel-tint));
+                            color: var(--b3-card-success-color);
                         }
                         .task-suite-column-header--blocked {
-                            background: color-mix(in srgb, var(--b3-card-warning-background) 55%, var(--b3-theme-surface));
+                            background: color-mix(in srgb, var(--b3-card-warning-background) 35%, var(--task-suite-panel-tint));
+                            color: var(--b3-card-warning-color);
                         }
                         .task-suite-column-settings {
-                            background: color-mix(in srgb, var(--b3-theme-surface-lighter) 35%, var(--b3-theme-surface));
+                            background: var(--task-suite-panel-tint);
                         }
                         .task-suite-column-body {
                             min-height: 320px;
@@ -569,10 +607,11 @@
                             border-bottom: 1px solid var(--task-suite-border);
                             border-radius: 8px;
                             padding: 0 6px;
-                            background: var(--task-suite-surface);
+                            background: var(--task-suite-panel-tint);
                         }
                         .task-suite-calendar-mode .item {
                             min-height: 32px;
+                            color: var(--task-suite-text-soft);
                         }
                         .task-suite-calendar-grid {
                             display: grid;
@@ -594,6 +633,15 @@
                         }
                         .task-suite-calendar-grid--week {
                             grid-template-columns: repeat(7, minmax(0, 1fr));
+                            align-items: stretch;
+                            min-height: 72vh;
+                        }
+                        .task-suite-calendar-panel--week {
+                            min-height: 72vh;
+                            display: flex;
+                        }
+                        .task-suite-calendar-panel--week .task-suite-calendar-grid {
+                            flex: 1;
                         }
                         .task-suite-calendar-day {
                             min-height: 120px;
@@ -620,6 +668,11 @@
                             background: var(--task-suite-surface);
                             box-sizing: border-box;
                         }
+                        .task-suite-calendar-grid--week .task-suite-calendar-day {
+                            min-height: 0;
+                            height: 100%;
+                            overflow: hidden;
+                        }
                         .task-suite-calendar-panel--month {
                             border-radius: 8px;
                             overflow: hidden;
@@ -633,6 +686,7 @@
                             align-items: flex-start;
                             gap: 6px;
                             min-width: 0;
+                            color: var(--task-suite-header-text);
                         }
                         .task-suite-calendar-day-title {
                             min-width: 0;
@@ -642,6 +696,7 @@
                         }
                         .task-suite-calendar-day-title > strong {
                             line-height: 1.2;
+                            color: var(--task-suite-day-title-text);
                         }
                         .task-suite-calendar-add-btn {
                             min-height: 22px;
@@ -667,8 +722,53 @@
                             overflow: auto;
                             padding-right: 2px;
                         }
+                        .task-suite-calendar-grid--week .task-suite-calendar-day-tasks {
+                            flex: 1;
+                            min-height: 0;
+                            overflow: auto;
+                            padding-right: 2px;
+                        }
                         .task-suite-calendar-grid--month .task-suite-calendar-day-head {
                             align-items: center;
+                            padding: 2px 4px;
+                            border-radius: 6px;
+                        }
+                        .task-suite-root .b3-button.b3-button--outline,
+                        .task-suite-root .b3-button.b3-button--text {
+                            background: var(--task-suite-button-bg);
+                            color: var(--task-suite-button-text);
+                            border-color: var(--task-suite-button-border);
+                        }
+                        .task-suite-root .b3-button.b3-button--outline:hover,
+                        .task-suite-root .b3-button.b3-button--text:hover {
+                            background: color-mix(in srgb, var(--task-suite-button-bg) 82%, var(--task-suite-surface));
+                            color: var(--task-suite-header-text);
+                            border-color: var(--task-suite-border);
+                        }
+                        .task-suite-root .b3-text-field,
+                        .task-suite-root .b3-select,
+                        .task-suite-root textarea {
+                            background: var(--task-suite-form-bg);
+                            color: var(--task-suite-item-text);
+                            border-color: var(--task-suite-border);
+                        }
+                        .task-suite-root .b3-text-field::placeholder,
+                        .task-suite-root textarea::placeholder {
+                            color: var(--task-suite-text-soft);
+                        }
+                        .task-suite-editor-shell {
+                            padding: 8px;
+                            background: var(--task-suite-bg);
+                        }
+                        .task-suite-editor-card {
+                            background: var(--task-suite-surface);
+                        }
+                        .task-suite-editor-actions {
+                            justify-content: flex-end;
+                            gap: 8px;
+                            margin-top: 12px;
+                            padding-top: 10px;
+                            border-top: 1px solid var(--task-suite-border);
                         }
                         .task-suite-calendar-task {
                             font-size: 12px;
@@ -864,25 +964,26 @@
                             border-radius: 8px;
                             overflow: auto;
                             position: relative;
-                            background: var(--task-suite-surface);
+                            background: var(--task-suite-gantt-panel-bg);
                         }
                         .task-suite-gantt-row {
                             display: grid;
                             grid-template-columns: 260px 1fr;
                             min-height: 36px;
                             border-bottom: 1px solid var(--task-suite-border);
+                            background: var(--task-suite-surface);
                         }
                         .task-suite-gantt-axis-row {
                             display: grid;
                             grid-template-columns: 260px 1fr;
                             min-height: 30px;
                             border-bottom: 1px solid var(--task-suite-border);
-                            background: var(--task-suite-muted);
+                            background: var(--task-suite-gantt-panel-bg);
                         }
                         .task-suite-gantt-axis-label {
                             padding: 6px 8px;
                             font-size: 12px;
-                            color: var(--task-suite-text-soft);
+                            color: var(--task-suite-header-text);
                             border-right: 1px solid var(--task-suite-border);
                         }
                         .task-suite-gantt-axis-track {
@@ -901,7 +1002,7 @@
                             top: 6px;
                             transform: translateX(-50%);
                             font-size: 11px;
-                            color: var(--task-suite-text-soft);
+                            color: var(--task-suite-header-text);
                             white-space: nowrap;
                             padding: 0 2px;
                         }
@@ -915,14 +1016,15 @@
                             flex-direction: column;
                             justify-content: center;
                             gap: 2px;
+                            background: var(--task-suite-panel-tint);
                         }
                         .task-suite-gantt-track {
                             position: relative;
                             min-width: 800px;
                             background: repeating-linear-gradient(
                                 to right,
-                                var(--task-suite-surface) 0,
-                                var(--task-suite-surface) 29px,
+                                var(--task-suite-gantt-track-bg) 0,
+                                var(--task-suite-gantt-track-bg) 29px,
                                 var(--task-suite-line) 30px
                             );
                         }
@@ -950,11 +1052,12 @@
                             display: flex;
                             flex-direction: column;
                             gap: 6px;
+                            background: var(--task-suite-panel-tint);
                         }
                         .task-suite-resource-bar {
                             height: 8px;
                             border-radius: 4px;
-                            background: var(--b3-theme-primary-lightest);
+                            background: var(--task-suite-chip-bg);
                             overflow: hidden;
                         }
                         .task-suite-resource-bar > span {
@@ -1133,14 +1236,6 @@
                 this.applyGanttQuickRange(target.dataset.range || "30d");
                 return;
             }
-            if (action === "add-board-column") {
-                this.addBoardColumn();
-                return;
-            }
-            if (action === "remove-board-column") {
-                this.removeBoardColumn(target.dataset.columnId || "");
-                return;
-            }
             if (action === "run-self-test") {
                 this.runSelfTest();
                 return;
@@ -1214,29 +1309,6 @@
                 this.ui.ganttEnd = target.value || "";
                 this.renderApp();
                 return;
-            }
-            if (target.dataset.action === "column-status") {
-                const column = this.state.boardColumns.find((item) => item.id === (target.dataset.columnId || ""));
-                if (!column) {
-                    return;
-                }
-                if (column.builtIn) {
-                    return;
-                }
-                column.status = target.value || "todo";
-                this.commitAndRender();
-                return;
-            }
-            if (target.dataset.action === "column-title") {
-                const column = this.state.boardColumns.find((item) => item.id === (target.dataset.columnId || ""));
-                if (!column) {
-                    return;
-                }
-                if (column.builtIn) {
-                    return;
-                }
-                column.title = (target.value || "").trim() || "新列";
-                this.commitAndRender();
             }
         }
 
@@ -1359,7 +1431,7 @@
                 .filter(Boolean)
                 .map((item) => item.title);
             return `
-                <div class="task-suite-card">
+                <div class="task-suite-card task-suite-task-card">
                     <div class="fn__flex" style="justify-content: space-between; gap: 8px; align-items: center;">
                         <div style="min-width: 0;">
                             <div style="font-weight: 600;">${this.escapeHtml(task.title)}</div>
@@ -1402,7 +1474,7 @@
                                 <button class="b3-button b3-button--outline" data-action="remove-subtask" data-task-id="${task.id}" data-subtask-id="${subtask.id}">删除</button>
                             </div>
                         `).join("")}
-                        <div class="fn__flex" style="gap: 8px;">
+                        <div class="task-suite-subtask-entry">
                             <input class="b3-text-field fn__block" data-subtask-input="${task.id}" placeholder="新增子任务">
                             <button class="b3-button b3-button--text" data-action="add-subtask" data-task-id="${task.id}">添加</button>
                         </div>
@@ -1450,7 +1522,8 @@
         }
 
         renderKanbanView() {
-            const columnHtml = this.state.boardColumns.map((column) => {
+            const columns = this.createDefaultState().boardColumns;
+            const columnHtml = columns.map((column) => {
                 const tasks = this.state.tasks
                     .filter((task) => task.status === column.status)
                     .sort((a, b) => {
@@ -1466,12 +1539,11 @@
                 return `
                     <div class="task-suite-column ${columnClass}">
                         <div class="task-suite-column-header ${columnHeaderClass}">
-                            <div style="min-width: 0; flex: 1;">
-                                <input class="b3-text-field fn__block" data-action="column-title" data-column-id="${column.id}" value="${this.escapeHtml(column.title)}">
+                            <div class="task-suite-column-title-wrap">
+                                <span class="task-suite-column-status-dot"></span>
+                                <div class="task-suite-column-title">${this.escapeHtml(column.title)}</div>
                             </div>
-                            <div class="task-suite-meta">
-                                ${column.builtIn ? `<span>默认</span>` : `<button class="b3-button b3-button--outline" data-action="remove-board-column" data-column-id="${column.id}">删列</button>`}
-                            </div>
+                            <span class="task-suite-column-count">${tasks.length} 项</span>
                         </div>
                         <div class="task-suite-column-body" data-drop-status="${column.status}">
                             ${tasks.map((task) => `
@@ -1494,10 +1566,7 @@
             return `
                 <div class="task-suite-list">
                     <div class="task-suite-card">
-                        <div class="fn__flex" style="justify-content: space-between; align-items: center;">
-                            <div class="task-suite-meta">拖拽任务卡片到不同列，状态实时同步到清单/时间轴/日历/甘特图。</div>
-                            <button class="b3-button b3-button--text" data-action="add-board-column">新增列</button>
-                        </div>
+                        <div class="task-suite-meta">看板按任务状态自动分列，拖拽任务卡片后会同步更新清单、时间轴、日历与甘特图。</div>
                     </div>
                     <div class="task-suite-columns">
                         ${columnHtml}
@@ -1597,11 +1666,11 @@
                                 </select>
                             </div>
                     </div>
-                    <div class="task-suite-card ${mode === "month" ? "task-suite-calendar-panel--month" : ""}">
+                    <div class="task-suite-card ${mode === "month" ? "task-suite-calendar-panel--month" : ""} ${mode === "week" ? "task-suite-calendar-panel--week" : ""}">
                         <div class="task-suite-calendar-grid task-suite-calendar-grid--${mode}" style="${mode === "month" ? `--task-suite-month-height:${monthHeight}vh;` : ""}">
                             ${range.days.map((day) => {
                                 const tasks = mapByDay.get(day.date) || [];
-                                const renderTasks = mode === "month" ? tasks : tasks.slice(0, 4);
+                                const renderTasks = tasks;
                                 return `
                                     <div class="task-suite-calendar-day ${day.dimmed ? "dimmed" : ""}">
                                         <div class="task-suite-calendar-day-head">
@@ -1635,7 +1704,6 @@
                                                 </div>
                                             `).join("")}
                                         </div>
-                                        ${mode !== "month" && tasks.length > renderTasks.length ? `<div class="task-suite-meta">+${tasks.length - renderTasks.length} 项</div>` : ""}
                                     </div>
                                 `;
                             }).join("")}
@@ -1787,8 +1855,8 @@
                 width: this.isMobile ? "96vw" : "760px",
                 height: this.isMobile ? "90vh" : "84vh",
                 content: `
-                    <div class="task-suite-root" style="padding: 0;">
-                        <form data-form="task-editor-dialog" class="task-suite-card">
+                    <div class="task-suite-root task-suite-theme-${this.normalizeThemeMode(this.state.settings.themeMode)} task-suite-editor-shell">
+                        <form data-form="task-editor-dialog" class="task-suite-card task-suite-editor-card">
                             <input type="hidden" name="taskId" value="${task.id}">
                             <div class="task-suite-grid">
                                 <div class="task-suite-field" style="grid-column: span 6;">
@@ -1855,7 +1923,7 @@
                                     <textarea class="b3-text-field fn__block" name="description" rows="4">${this.escapeHtml(task.description || "")}</textarea>
                                 </div>
                             </div>
-                            <div class="fn__flex" style="justify-content: flex-end; gap: 8px; margin-top: 12px;">
+                            <div class="fn__flex task-suite-editor-actions">
                                 <button class="b3-button b3-button--outline" type="button" data-action="cancel-task-editor">取消</button>
                                 <button class="b3-button b3-button--text" type="submit">${task.id ? "保存任务" : "创建任务"}</button>
                             </div>
@@ -2040,34 +2108,6 @@
             if (task.progress === 100 && task.status !== "done") {
                 task.status = "done";
             }
-        }
-
-        addBoardColumn() {
-            const id = this.makeId("col");
-            this.state.boardColumns.push({
-                id,
-                title: "新列",
-                status: "todo",
-                builtIn: false
-            });
-            this.commitAndRender();
-        }
-
-        removeBoardColumn(columnId) {
-            const column = this.state.boardColumns.find((item) => item.id === columnId);
-            if (!column) {
-                return;
-            }
-            if (column.builtIn) {
-                showMessage("默认列不可删除", 2000, "error");
-                return;
-            }
-            if (this.state.boardColumns.length <= 1) {
-                showMessage("至少保留一列", 2000, "error");
-                return;
-            }
-            this.state.boardColumns = this.state.boardColumns.filter((column) => column.id !== columnId);
-            this.commitAndRender();
         }
 
         getTimelineEntries() {

@@ -54,17 +54,29 @@
             };
             await this.loadState();
             this.normalizeState();
+            const plugin = this;
+            this.addTab({
+                type: "task-suite-manager-tab",
+                init() {
+                    plugin.tabElement = this.element;
+                    plugin.mountMainTab();
+                },
+                destroy() {
+                    plugin.tabElement = null;
+                    plugin.root = null;
+                }
+            });
             this.addTopBar({
                 icon: "iconList",
                 title: "任务管理中心",
                 position: "right",
-                callback: () => this.openDialog()
+                callback: () => this.openMainTab()
             });
             this.addCommand({
                 langKey: "openTaskSuite",
                 langText: "打开任务管理中心",
                 hotkey: "⌥⌘T",
-                callback: () => this.openDialog()
+                callback: () => this.openMainTab()
             });
         }
 
@@ -73,6 +85,7 @@
                 this.taskEditorDialog.destroy();
                 this.taskEditorDialog = null;
             }
+            this.tabElement = null;
             this.dialog = null;
             this.root = null;
         }
@@ -205,27 +218,32 @@
             await this.saveData(this.dataFile, this.state);
         }
 
+        openMainTab() {
+            siyuan.openTab({
+                app: this.app,
+                custom: {
+                    icon: "iconList",
+                    title: "任务管理中心",
+                    id: `${this.name}task-suite-manager-tab`
+                }
+            });
+            if (this.tabElement) {
+                this.mountMainTab();
+            }
+        }
+
         openDialog() {
-            if (this.dialog) {
-                this.renderApp();
+            this.openMainTab();
+        }
+
+        mountMainTab() {
+            if (!this.tabElement) {
                 return;
             }
-            this.dialog = new Dialog({
-                title: "任务管理中心",
-                width: this.isMobile ? "96vw" : "1240px",
-                height: this.isMobile ? "92vh" : "88vh",
-                content: this.renderDialogShell()
-            });
-            this.root = this.dialog.element.querySelector(".task-suite-root");
+            this.tabElement.innerHTML = this.renderDialogShell();
+            this.root = this.tabElement.querySelector(".task-suite-root");
             this.bindRootEvents();
             this.renderApp();
-            const originalDestroy = this.dialog.destroy.bind(this.dialog);
-            this.dialog.destroy = () => {
-                this.closeTaskEditorDialog();
-                this.dialog = null;
-                this.root = null;
-                originalDestroy();
-            };
         }
 
         renderDialogShell() {
@@ -358,6 +376,21 @@
                             padding: 10px;
                             border-bottom: 1px solid var(--b3-border-color);
                         }
+                        .task-suite-column-header--todo {
+                            background: color-mix(in srgb, var(--b3-theme-primary-lighter) 38%, var(--b3-theme-surface));
+                        }
+                        .task-suite-column-header--in-progress {
+                            background: color-mix(in srgb, var(--b3-card-info-background) 55%, var(--b3-theme-surface));
+                        }
+                        .task-suite-column-header--done {
+                            background: color-mix(in srgb, var(--b3-card-success-background) 55%, var(--b3-theme-surface));
+                        }
+                        .task-suite-column-header--blocked {
+                            background: color-mix(in srgb, var(--b3-card-warning-background) 55%, var(--b3-theme-surface));
+                        }
+                        .task-suite-column-settings {
+                            background: color-mix(in srgb, var(--b3-theme-surface-lighter) 35%, var(--b3-theme-surface));
+                        }
                         .task-suite-column-body {
                             min-height: 200px;
                             padding: 8px;
@@ -397,6 +430,19 @@
                             gap: 8px;
                             margin-top: 10px;
                         }
+                        .task-suite-calendar-grid--month {
+                            gap: 0;
+                            border: 1px solid var(--b3-border-color);
+                            border-radius: 8px;
+                            overflow: hidden;
+                            grid-template-rows: repeat(6, minmax(96px, 1fr));
+                            height: auto;
+                            min-height: 0;
+                            margin-top: 0;
+                        }
+                        .task-suite-calendar-grid--week {
+                            grid-template-columns: repeat(7, minmax(0, 1fr));
+                        }
                         .task-suite-calendar-day {
                             min-height: 120px;
                             border: 1px solid var(--b3-border-color);
@@ -408,6 +454,36 @@
                         }
                         .task-suite-calendar-day.dimmed {
                             opacity: .55;
+                        }
+                        .task-suite-calendar-grid--month .task-suite-calendar-day {
+                            min-height: 0;
+                            height: 100%;
+                            overflow: hidden;
+                            border: none;
+                            border-radius: 0;
+                            padding: 4px 6px;
+                            gap: 4px;
+                        }
+                        .task-suite-calendar-grid--month .task-suite-calendar-day:not(:nth-child(7n)) {
+                            border-right: 1px solid var(--b3-border-color);
+                        }
+                        .task-suite-calendar-grid--month .task-suite-calendar-day:nth-child(-n+35) {
+                            border-bottom: 1px solid var(--b3-border-color);
+                        }
+                        .task-suite-calendar-panel--month {
+                            border: none;
+                            padding: 0;
+                            background: transparent;
+                        }
+                        .task-suite-calendar-day-head {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: flex-start;
+                            gap: 6px;
+                        }
+                        .task-suite-calendar-lunar {
+                            font-size: 11px;
+                            color: var(--b3-theme-on-surface-light);
                         }
                         .task-suite-calendar-task {
                             font-size: 12px;
@@ -432,6 +508,52 @@
                             font-size: 11px;
                             color: var(--b3-theme-on-surface-light);
                             margin-right: 4px;
+                        }
+                        .task-suite-day-timeline {
+                            border: 1px solid var(--b3-border-color);
+                            border-radius: 8px;
+                            overflow: hidden;
+                        }
+                        .task-suite-day-hour-row {
+                            display: grid;
+                            grid-template-columns: 64px 1fr;
+                            border-top: 1px solid var(--b3-border-color);
+                            min-height: 34px;
+                        }
+                        .task-suite-day-hour-row:first-child {
+                            border-top: none;
+                        }
+                        .task-suite-day-hour-label {
+                            padding: 6px 8px;
+                            font-size: 12px;
+                            color: var(--b3-theme-on-surface-light);
+                            background: color-mix(in srgb, var(--b3-theme-surface-lighter) 28%, var(--b3-theme-background));
+                            border-right: 1px solid var(--b3-border-color);
+                        }
+                        .task-suite-day-hour-content {
+                            padding: 4px 8px;
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: 6px;
+                            align-items: center;
+                        }
+                        .task-suite-day-event {
+                            font-size: 12px;
+                            padding: 2px 8px;
+                            border-radius: 999px;
+                            background: var(--b3-theme-background);
+                            border: 1px solid var(--b3-border-color);
+                        }
+                        .task-suite-progress-slider-row {
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                        }
+                        .task-suite-progress-value {
+                            width: 44px;
+                            text-align: right;
+                            font-size: 12px;
+                            color: var(--b3-theme-on-surface-light);
                         }
                         .task-suite-dependency-picker {
                             max-height: 180px;
@@ -481,6 +603,39 @@
                             grid-template-columns: 260px 1fr;
                             min-height: 36px;
                             border-bottom: 1px solid var(--b3-border-color);
+                        }
+                        .task-suite-gantt-axis-row {
+                            display: grid;
+                            grid-template-columns: 260px 1fr;
+                            min-height: 30px;
+                            border-bottom: 1px solid var(--b3-border-color);
+                            background: var(--b3-theme-surface-lighter);
+                        }
+                        .task-suite-gantt-axis-label {
+                            padding: 6px 8px;
+                            font-size: 12px;
+                            color: var(--b3-theme-on-surface-light);
+                            border-right: 1px solid var(--b3-border-color);
+                        }
+                        .task-suite-gantt-axis-track {
+                            position: relative;
+                            min-width: 800px;
+                            overflow: visible;
+                        }
+                        .task-suite-gantt-axis-tick {
+                            position: absolute;
+                            top: 0;
+                            bottom: 0;
+                            border-left: 1px solid var(--b3-border-color);
+                        }
+                        .task-suite-gantt-axis-text {
+                            position: absolute;
+                            top: 6px;
+                            transform: translateX(-50%);
+                            font-size: 11px;
+                            color: var(--b3-theme-on-surface-light);
+                            white-space: nowrap;
+                            padding: 0 2px;
                         }
                         .task-suite-gantt-row:last-child {
                             border-bottom: none;
@@ -564,6 +719,15 @@
                             }
                             .task-suite-calendar-grid {
                                 grid-template-columns: repeat(2, minmax(0, 1fr));
+                            }
+                            .task-suite-calendar-grid--month {
+                                height: auto;
+                                min-height: 0;
+                                grid-template-rows: auto;
+                                grid-template-columns: repeat(7, minmax(0, 1fr));
+                            }
+                            .task-suite-calendar-panel--month {
+                                overflow-x: auto;
                             }
                             .task-suite-calendar-day {
                                 min-height: 96px;
@@ -989,18 +1153,16 @@
                         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
                     });
                 const columnClass = this.getColumnClassByStatus(column.status);
+                const columnHeaderClass = this.getColumnHeaderClassByStatus(column.status);
                 return `
                     <div class="task-suite-column ${columnClass}">
-                        <div class="task-suite-column-header">
+                        <div class="task-suite-column-header ${columnHeaderClass}">
                             <div style="min-width: 0; flex: 1;">
                                 <input class="b3-text-field fn__block" data-action="column-title" data-column-id="${column.id}" value="${this.escapeHtml(column.title)}">
                             </div>
-                            ${column.builtIn ? `<span class="task-suite-meta">默认</span>` : `<button class="b3-button b3-button--outline" data-action="remove-board-column" data-column-id="${column.id}">删列</button>`}
-                        </div>
-                        <div class="task-suite-column-header" style="border-top: none;">
-                            <select class="b3-select fn__block" data-action="column-status" data-column-id="${column.id}" ${column.builtIn ? "disabled" : ""}>
-                                ${STATUS_OPTIONS.map((item) => `<option value="${item.value}" ${item.value === column.status ? "selected" : ""}>${item.label}</option>`).join("")}
-                            </select>
+                            <div class="task-suite-meta">
+                                ${column.builtIn ? `<span>默认</span>` : `<button class="b3-button b3-button--outline" data-action="remove-board-column" data-column-id="${column.id}">删列</button>`}
+                            </div>
                         </div>
                         <div class="task-suite-column-body" data-drop-status="${column.status}">
                             ${tasks.map((task) => `
@@ -1044,6 +1206,45 @@
                 }
                 mapByDay.get(key).push(item);
             });
+            if (mode === "day") {
+                const day = range.days[0];
+                const tasks = mapByDay.get(day.date) || [];
+                return `
+                    <div class="task-suite-list">
+                        <div class="task-suite-card task-suite-calendar-header">
+                            <div class="fn__flex" style="gap: 8px; align-items: center;">
+                                <button class="b3-button b3-button--outline" data-action="calendar-prev">上一段</button>
+                                <button class="b3-button b3-button--outline" data-action="calendar-next">下一段</button>
+                                <button class="b3-button b3-button--text" data-action="calendar-today">今天</button>
+                                <input class="b3-text-field" type="date" data-filter="calendar-cursor" value="${this.formatDate(cursor)}">
+                            </div>
+                            <div class="layout-tab-bar fn__flex task-suite-calendar-mode">
+                                ${[
+                                    { mode: "month", label: "月" },
+                                    { mode: "week", label: "周" },
+                                    { mode: "day", label: "日" }
+                                ].map((item) => `
+                                    <div class="item item--full ${mode === item.mode ? "item--focus" : ""}" data-action="switch-calendar-mode" data-mode="${item.mode}">
+                                        <span class="fn__flex-1"></span>
+                                        <span class="item__text">${item.label}</span>
+                                        <span class="fn__flex-1"></span>
+                                    </div>
+                                `).join("")}
+                            </div>
+                            <div class="task-suite-meta">
+                                展示区间: ${range.start} 至 ${range.end}
+                            </div>
+                        </div>
+                        <div class="task-suite-card">
+                            <div class="fn__flex" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <strong>${day.label}</strong>
+                                <button class="b3-button b3-button--outline" data-action="new-task-on-date" data-date="${day.date}">新增任务</button>
+                            </div>
+                            ${tasks.length ? this.renderCalendarDayTimeline(day.date, tasks) : `<div class="task-suite-meta">当日暂无任务，时间轴会在有任务时显示。</div>`}
+                        </div>
+                    </div>
+                `;
+            }
             return `
                 <div class="task-suite-list">
                     <div class="task-suite-card task-suite-calendar-header">
@@ -1070,15 +1271,18 @@
                             展示区间: ${range.start} 至 ${range.end}
                         </div>
                     </div>
-                    <div class="task-suite-card">
-                        <div class="task-suite-calendar-grid">
+                    <div class="task-suite-card ${mode === "month" ? "task-suite-calendar-panel--month" : ""}">
+                        <div class="task-suite-calendar-grid task-suite-calendar-grid--${mode}">
                             ${range.days.map((day) => {
                                 const tasks = mapByDay.get(day.date) || [];
-                                const renderTasks = mode === "day" ? tasks : tasks.slice(0, 4);
+                                const renderTasks = tasks.slice(0, mode === "month" ? 3 : 4);
                                 return `
                                     <div class="task-suite-calendar-day ${day.dimmed ? "dimmed" : ""}">
-                                        <div class="fn__flex" style="justify-content: space-between; align-items: center;">
-                                            <strong>${day.label}</strong>
+                                        <div class="task-suite-calendar-day-head">
+                                            <div>
+                                                <strong>${day.label}</strong>
+                                                ${mode === "month" ? `<div class="task-suite-calendar-lunar">${this.getLunarLabel(day.date)}</div>` : ""}
+                                            </div>
                                             <button class="b3-button b3-button--outline" data-action="new-task-on-date" data-date="${day.date}">+</button>
                                         </div>
                                         ${renderTasks.map((item) => `
@@ -1087,7 +1291,7 @@
                                                 ${this.escapeHtml(item.task.title)}
                                             </div>
                                         `).join("")}
-                                        ${mode !== "day" && tasks.length > 4 ? `<div class="task-suite-meta">+${tasks.length - 4} 项</div>` : ""}
+                                        ${tasks.length > renderTasks.length ? `<div class="task-suite-meta">+${tasks.length - renderTasks.length} 项</div>` : ""}
                                     </div>
                                 `;
                             }).join("")}
@@ -1106,6 +1310,27 @@
             const timelineDays = this.diffDays(range.startDate, range.endDate) + 1;
             const trackWidth = Math.max(800, timelineDays * 30);
             const criticalSet = this.getCriticalPathSet(tasks);
+            const axisStep = timelineDays > 120 ? 14 : (timelineDays > 60 ? 7 : (timelineDays > 31 ? 3 : 1));
+            const tickPoints = [];
+            for (let i = 0; i < timelineDays; i += axisStep) {
+                tickPoints.push(i);
+            }
+            if (!tickPoints.includes(timelineDays - 1)) {
+                tickPoints.push(timelineDays - 1);
+            }
+            const ticks = Array.from(new Set(tickPoints))
+                .sort((a, b) => a - b)
+                .map((point) => {
+                    const currentDate = this.addDays(range.startDate, point);
+                    const isFirst = point === 0;
+                    const isLast = point === timelineDays - 1;
+                    const transform = isFirst ? "translateX(0)" : (isLast ? "translateX(-100%)" : "translateX(-50%)");
+                    const align = isFirst ? "left" : (isLast ? "right" : "center");
+                    return `
+                        <span class="task-suite-gantt-axis-tick" style="left:${point * 30}px;"></span>
+                        <span class="task-suite-gantt-axis-text" style="left:${point * 30}px; transform:${transform}; text-align:${align};">${this.formatDate(currentDate).slice(5)}</span>
+                    `;
+                });
             const rows = tasks.map((task) => {
                 const left = this.diffDays(range.startDate, this.parseDate(task.planStart)) * 30;
                 const durationDays = Math.max(1, this.diffDays(this.parseDate(task.planStart), this.parseDate(task.planEnd)) + 1);
@@ -1116,7 +1341,7 @@
                             <strong>${this.escapeHtml(task.title)}</strong>
                             <span class="task-suite-meta">${task.planStart} ~ ${task.planEnd} | ${task.progress}% | ${task.resource ? this.escapeHtml(task.resource) : "未分配"}</span>
                         </div>
-                        <div class="task-suite-gantt-track">
+                        <div class="task-suite-gantt-track" style="width:${trackWidth}px;">
                             <div class="task-suite-gantt-bar ${criticalSet.has(task.id) ? "critical" : ""}" style="left:${left}px; width:${width}px;">
                                 ${task.progress}%
                             </div>
@@ -1154,6 +1379,12 @@
                     </div>
                     <div class="task-suite-gantt-canvas" style="min-width: 100%;">
                         <div style="width: ${trackWidth + 260}px;">
+                            <div class="task-suite-gantt-axis-row">
+                                <div class="task-suite-gantt-axis-label">时间轴</div>
+                                <div class="task-suite-gantt-axis-track" style="width:${trackWidth}px;">
+                                    ${ticks.join("")}
+                                </div>
+                            </div>
                             ${rows}
                         </div>
                     </div>
@@ -1251,7 +1482,10 @@
                                 </div>
                                 <div class="task-suite-field" style="grid-column: span 3;">
                                     <label>进度(%)</label>
-                                    <input class="b3-text-field fn__block" name="progress" type="number" min="0" max="100" value="${Number(task.progress || 0)}">
+                                    <div class="task-suite-progress-slider-row">
+                                        <input class="b3-slider fn__flex-1" name="progress" type="range" min="0" max="100" value="${Number(task.progress || 0)}">
+                                        <span class="task-suite-progress-value" data-role="progress-value">${Number(task.progress || 0)}%</span>
+                                    </div>
                                 </div>
                                 <div class="task-suite-field" style="grid-column: span 3;">
                                     <label>负责人/资源</label>
@@ -1291,6 +1525,15 @@
                     event.preventDefault();
                     this.submitTaskForm(form);
                 });
+                const progressInput = form.querySelector("input[name='progress']");
+                const progressValue = form.querySelector("[data-role='progress-value']");
+                if (progressInput && progressValue) {
+                    const updateProgressValue = () => {
+                        progressValue.textContent = `${this.normalizeProgress(progressInput.value)}%`;
+                    };
+                    progressInput.addEventListener("input", updateProgressValue);
+                    updateProgressValue();
+                }
             }
             const originalDestroy = this.taskEditorDialog.destroy.bind(this.taskEditorDialog);
             this.taskEditorDialog.destroy = () => {
@@ -1599,6 +1842,16 @@
         getOccurrencesForRange(startDateString, endDateString) {
             const result = [];
             this.state.tasks.forEach((task) => {
+                const spanDates = this.getTaskSpanDates(task, startDateString, endDateString);
+                if (spanDates.length) {
+                    spanDates.forEach((date) => {
+                        result.push({
+                            date,
+                            task
+                        });
+                    });
+                    return;
+                }
                 const dates = this.getTaskOccurrences(task, startDateString, endDateString);
                 dates.forEach((date) => {
                     result.push({
@@ -1608,6 +1861,34 @@
                 });
             });
             return result.sort((a, b) => a.date.localeCompare(b.date));
+        }
+
+        getTaskSpanDates(task, startDateString, endDateString) {
+            const startDateRaw = this.toDateOnly(task.startDate);
+            const dueDateRaw = this.toDateOnly(task.dueDate);
+            if (!startDateRaw || !dueDateRaw) {
+                return [];
+            }
+            const taskStart = this.parseDate(startDateRaw);
+            const taskDue = this.parseDate(dueDateRaw);
+            const rangeStart = this.parseDate(startDateString);
+            const rangeEnd = this.parseDate(endDateString);
+            if (!taskStart || !taskDue || !rangeStart || !rangeEnd) {
+                return [];
+            }
+            const start = taskStart <= taskDue ? taskStart : taskDue;
+            const end = taskStart <= taskDue ? taskDue : taskStart;
+            if (end < rangeStart || start > rangeEnd) {
+                return [];
+            }
+            const cursor = start < rangeStart ? new Date(rangeStart) : new Date(start);
+            const limit = end > rangeEnd ? new Date(rangeEnd) : new Date(end);
+            const result = [];
+            while (cursor <= limit) {
+                result.push(this.formatDate(cursor));
+                cursor.setDate(cursor.getDate() + 1);
+            }
+            return result;
         }
 
         getTaskOccurrences(task, startDateString, endDateString) {
@@ -1811,6 +2092,14 @@
             return `task-suite-column--${normalized}`;
         }
 
+        getColumnHeaderClassByStatus(status) {
+            const normalized = this.normalizeStatus(status);
+            if (normalized === "in_progress") {
+                return "task-suite-column-header--in-progress";
+            }
+            return `task-suite-column-header--${normalized}`;
+        }
+
         getCalendarTaskTimeLabel(task, day) {
             const due = this.parseDate(task.dueDate);
             const start = this.parseDate(task.startDate);
@@ -1821,6 +2110,62 @@
                 return `${`${start.getHours()}`.padStart(2, "0")}:${`${start.getMinutes()}`.padStart(2, "0")}`;
             }
             return "";
+        }
+
+        getCalendarTaskDateTime(task, day) {
+            const due = this.parseDate(task.dueDate);
+            const start = this.parseDate(task.startDate);
+            if (due && this.toDateOnly(task.dueDate) === day) {
+                return due;
+            }
+            if (start && this.toDateOnly(task.startDate) === day) {
+                return start;
+            }
+            return null;
+        }
+
+        renderCalendarDayTimeline(day, tasks) {
+            const groups = new Map();
+            tasks.forEach((item) => {
+                const dateTime = this.getCalendarTaskDateTime(item.task, day);
+                const hour = dateTime ? dateTime.getHours() : 0;
+                const safeHour = Math.max(0, Math.min(24, hour));
+                if (!groups.has(safeHour)) {
+                    groups.set(safeHour, []);
+                }
+                groups.get(safeHour).push(item);
+            });
+            const rows = Array.from(groups.entries())
+                .sort((a, b) => a[0] - b[0])
+                .map(([hour, hourTasks]) => `
+                    <div class="task-suite-day-hour-row">
+                        <div class="task-suite-day-hour-label">${`${hour}`.padStart(2, "0")}:00</div>
+                        <div class="task-suite-day-hour-content">
+                            ${hourTasks.map((item) => `
+                                <span class="task-suite-day-event ${this.getPriorityClass(item.task.priority)}">
+                                    ${this.getCalendarTaskTimeLabel(item.task, day) ? `${this.getCalendarTaskTimeLabel(item.task, day)} ` : ""}${this.escapeHtml(item.task.title)}
+                                </span>
+                            `).join("")}
+                        </div>
+                    </div>
+                `);
+            return `<div class="task-suite-day-timeline">${rows.join("")}</div>`;
+        }
+
+        getLunarLabel(dateString) {
+            const date = this.parseDate(dateString);
+            if (!date) {
+                return "";
+            }
+            try {
+                const raw = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", {
+                    month: "short",
+                    day: "numeric"
+                }).format(date);
+                return raw.replace(/\s+/g, "");
+            } catch (error) {
+                return "";
+            }
         }
 
         makeId(prefix) {

@@ -33,10 +33,10 @@
 
     const TAB_OPTIONS = [
         { value: "list", label: "清单" },
-        { value: "timeline", label: "时间轴" },
         { value: "kanban", label: "看板" },
         { value: "calendar", label: "日历" },
-        { value: "gantt", label: "甘特图" }
+        { value: "gantt", label: "甘特图" },
+        { value: "timeline", label: "时间轴" }
     ];
 
     class SiYuanTaskSuitePlugin extends Plugin {
@@ -49,11 +49,15 @@
                 timelineEnd: "",
                 calendarMode: "month",
                 calendarCursor: this.formatDate(new Date()),
+                calendarMonthHeight: 70,
                 ganttStart: "",
-                ganttEnd: ""
+                ganttEnd: "",
+                kanbanDropTaskId: ""
             };
             await this.loadState();
             this.normalizeState();
+            this.ui.calendarMonthHeight = this.state.settings.calendarMonthHeight;
+            this.startReminderLoop();
             const plugin = this;
             this.addTab({
                 type: "task-suite-manager-tab",
@@ -81,9 +85,17 @@
         }
 
         onunload() {
+            if (this.reminderTimer) {
+                clearInterval(this.reminderTimer);
+                this.reminderTimer = null;
+            }
             if (this.taskEditorDialog) {
                 this.taskEditorDialog.destroy();
                 this.taskEditorDialog = null;
+            }
+            if (this.dragFeedbackTimer) {
+                clearTimeout(this.dragFeedbackTimer);
+                this.dragFeedbackTimer = null;
             }
             this.tabElement = null;
             this.dialog = null;
@@ -94,6 +106,12 @@
             return {
                 tasks: [],
                 history: [],
+                occurrenceStatuses: {},
+                reminderFired: {},
+                settings: {
+                    calendarMonthHeight: 70,
+                    themeMode: "light"
+                },
                 boardColumns: [
                     { id: "col_todo", title: "待办", status: "todo", builtIn: true },
                     { id: "col_in_progress", title: "进行中", status: "in_progress", builtIn: true },
@@ -124,6 +142,21 @@
             if (!Array.isArray(this.state.boardColumns) || this.state.boardColumns.length === 0) {
                 this.state.boardColumns = this.createDefaultState().boardColumns;
             }
+            if (!this.state.occurrenceStatuses || typeof this.state.occurrenceStatuses !== "object") {
+                this.state.occurrenceStatuses = {};
+            }
+            if (!this.state.reminderFired || typeof this.state.reminderFired !== "object") {
+                this.state.reminderFired = {};
+            }
+            if (!this.state.settings || typeof this.state.settings !== "object") {
+                this.state.settings = this.createDefaultState().settings;
+            }
+            this.state.settings = {
+                ...this.createDefaultState().settings,
+                ...this.state.settings
+            };
+            this.state.settings.calendarMonthHeight = this.normalizeCalendarMonthHeight(this.state.settings.calendarMonthHeight);
+            this.state.settings.themeMode = this.normalizeThemeMode(this.state.settings.themeMode);
             this.state.boardColumns = this.normalizeBoardColumns(this.state.boardColumns);
             const knownIds = new Set(this.state.tasks.map((task) => task.id));
             this.state.tasks = this.state.tasks.map((task) => {
@@ -138,6 +171,7 @@
                     startDate: task.startDate || "",
                     dueDate: task.dueDate || "",
                     endDate: task.endDate || "",
+                    reminderTime: task.reminderTime || "",
                     progress: this.normalizeProgress(task.progress),
                     resource: task.resource || "",
                     dependencies: Array.isArray(task.dependencies) ? task.dependencies.filter((id) => knownIds.has(id)) : [],
@@ -206,6 +240,19 @@
             return "none";
         }
 
+        normalizeCalendarMonthHeight(value) {
+            const parsed = Number(value);
+            const options = [60, 70, 80];
+            if (options.includes(parsed)) {
+                return parsed;
+            }
+            return 70;
+        }
+
+        normalizeThemeMode(value) {
+            return value === "dark" ? "dark" : "light";
+        }
+
         normalizeProgress(progress) {
             const value = Number(progress);
             if (Number.isNaN(value)) {
@@ -247,16 +294,35 @@
         }
 
         renderDialogShell() {
+            const themeMode = this.normalizeThemeMode(this.state.settings.themeMode);
             return `
-                <div class="task-suite-root">
+                <div class="task-suite-root task-suite-theme-${themeMode}">
                     <style>
                         .task-suite-root {
+                            --task-suite-bg: #ffffff;
+                            --task-suite-surface: #ffffff;
+                            --task-suite-muted: #f5f7fb;
+                            --task-suite-border: #dbe1ea;
+                            --task-suite-line: #e5e9f0;
+                            --task-suite-text: #1f2937;
+                            --task-suite-text-soft: #64748b;
                             height: 100%;
                             display: flex;
                             flex-direction: column;
-                            gap: 12px;
-                            padding: 10px;
+                            gap: 10px;
+                            padding: 0;
                             overflow: hidden;
+                            background: var(--task-suite-bg);
+                            color: var(--task-suite-text);
+                        }
+                        .task-suite-root.task-suite-theme-dark {
+                            --task-suite-bg: #0f1115;
+                            --task-suite-surface: #171a20;
+                            --task-suite-muted: #12151b;
+                            --task-suite-border: #2b323e;
+                            --task-suite-line: #232a35;
+                            --task-suite-text: #e5e7eb;
+                            --task-suite-text-soft: #9ca3af;
                         }
                         .task-suite-toolbar {
                             display: flex;
@@ -266,24 +332,26 @@
                             justify-content: space-between;
                         }
                         .task-suite-tabs.layout-tab-bar {
-                            border-bottom: 1px solid var(--b3-border-color);
+                            border-bottom: 1px solid var(--task-suite-border);
                             border-radius: 8px 8px 0 0;
                             padding: 0 6px;
                             flex: 1;
+                            background: var(--task-suite-surface);
                         }
                         .task-suite-tabs .item {
                             min-height: 34px;
                         }
                         .task-suite-tab.item--focus {
-                            color: var(--b3-theme-on-background);
+                            color: var(--task-suite-text);
                         }
                         .task-suite-content {
                             min-height: 0;
                             flex: 1;
                             overflow: auto;
-                            border: 1px solid var(--b3-border-color);
                             border-radius: 8px;
                             padding: 12px;
+                            background: var(--task-suite-muted);
+                            border: 1px solid var(--task-suite-border);
                         }
                         .task-suite-list-toolbar {
                             display: flex;
@@ -304,13 +372,13 @@
                         }
                         .task-suite-field > label {
                             font-size: 12px;
-                            color: var(--b3-theme-on-surface-light);
+                            color: var(--task-suite-text-soft);
                         }
                         .task-suite-card {
-                            border: 1px solid var(--b3-border-color);
                             border-radius: 8px;
                             padding: 10px;
-                            background: var(--b3-theme-surface);
+                            background: var(--task-suite-surface);
+                            border: 1px solid var(--task-suite-border);
                         }
                         .task-suite-list {
                             display: flex;
@@ -323,7 +391,7 @@
                             flex-wrap: wrap;
                             align-items: center;
                             font-size: 12px;
-                            color: var(--b3-theme-on-surface-light);
+                            color: var(--task-suite-text-soft);
                         }
                         .task-suite-tag {
                             background: var(--b3-theme-primary-lighter);
@@ -351,9 +419,9 @@
                         }
                         .task-suite-column {
                             min-height: 220px;
-                            border: 1px solid var(--b3-border-color);
                             border-radius: 8px;
-                            background: var(--b3-theme-background);
+                            background: var(--task-suite-surface);
+                            border: 1px solid var(--task-suite-border);
                             display: flex;
                             flex-direction: column;
                         }
@@ -374,7 +442,6 @@
                             justify-content: space-between;
                             align-items: center;
                             padding: 10px;
-                            border-bottom: 1px solid var(--b3-border-color);
                         }
                         .task-suite-column-header--todo {
                             background: color-mix(in srgb, var(--b3-theme-primary-lighter) 38%, var(--b3-theme-surface));
@@ -392,21 +459,78 @@
                             background: color-mix(in srgb, var(--b3-theme-surface-lighter) 35%, var(--b3-theme-surface));
                         }
                         .task-suite-column-body {
-                            min-height: 200px;
+                            min-height: 320px;
                             padding: 8px;
                             display: flex;
                             flex-direction: column;
                             gap: 8px;
+                            transition: background-color .2s ease;
+                        }
+                        .task-suite-column-body.drag-over {
+                            background: color-mix(in srgb, var(--b3-theme-primary-lighter) 26%, var(--task-suite-surface));
                         }
                         .task-suite-kanban-card {
-                            border: 1px solid var(--b3-border-color);
                             border-radius: 8px;
                             background: var(--b3-theme-surface);
                             padding: 8px;
                             cursor: grab;
+                            transition: transform .16s ease, border-color .16s ease, background-color .16s ease;
+                            border: 1px solid transparent;
+                        }
+                        .task-suite-kanban-card.priority-low {
+                            background: color-mix(in srgb, var(--b3-card-info-background) 45%, var(--b3-theme-background));
+                        }
+                        .task-suite-kanban-card.priority-medium {
+                            background: color-mix(in srgb, var(--b3-theme-background-light) 55%, var(--b3-theme-background));
+                        }
+                        .task-suite-kanban-card.priority-high {
+                            background: color-mix(in srgb, var(--b3-card-warning-background) 58%, var(--b3-theme-background));
+                        }
+                        .task-suite-kanban-card.priority-urgent {
+                            background: color-mix(in srgb, var(--b3-card-error-background) 60%, var(--b3-theme-background));
+                        }
+                        .task-suite-kanban-title {
+                            font-weight: 600;
+                            margin-bottom: 4px;
+                        }
+                        .task-suite-kanban-desc {
+                            font-size: 12px;
+                            color: var(--b3-theme-on-surface-light);
+                            margin-top: 4px;
+                            display: -webkit-box;
+                            -webkit-line-clamp: 2;
+                            -webkit-box-orient: vertical;
+                            overflow: hidden;
+                        }
+                        .task-suite-kanban-meta {
+                            margin-top: 6px;
+                            display: flex;
+                            gap: 6px;
+                            flex-wrap: wrap;
+                            font-size: 11px;
+                            color: var(--b3-theme-on-surface-light);
+                        }
+                        .task-suite-kanban-chip {
+                            border-radius: 999px;
+                            padding: 1px 7px;
+                            background: var(--b3-theme-background);
+                            white-space: nowrap;
                         }
                         .task-suite-kanban-card.dragging {
-                            opacity: .5;
+                            opacity: .72;
+                            transform: scale(.98);
+                            border-color: var(--task-suite-border);
+                        }
+                        .task-suite-kanban-card.drop-success {
+                            animation: task-suite-drop-flash .85s ease;
+                        }
+                        @keyframes task-suite-drop-flash {
+                            0% {
+                                border-color: var(--b3-theme-primary);
+                            }
+                            100% {
+                                border-color: transparent;
+                            }
                         }
                         .task-suite-calendar-header {
                             display: flex;
@@ -416,10 +540,10 @@
                             flex-wrap: wrap;
                         }
                         .task-suite-calendar-mode.layout-tab-bar {
-                            border-bottom: 1px solid var(--b3-border-color);
+                            border-bottom: 1px solid var(--task-suite-border);
                             border-radius: 8px;
                             padding: 0 6px;
-                            background: var(--b3-theme-background);
+                            background: var(--task-suite-surface);
                         }
                         .task-suite-calendar-mode .item {
                             min-height: 32px;
@@ -432,25 +556,27 @@
                         }
                         .task-suite-calendar-grid--month {
                             gap: 0;
-                            border: 1px solid var(--b3-border-color);
                             border-radius: 8px;
                             overflow: hidden;
-                            grid-template-rows: repeat(6, minmax(96px, 1fr));
-                            height: auto;
-                            min-height: 0;
+                            grid-template-rows: repeat(6, minmax(0, 1fr));
+                            height: var(--task-suite-month-height, 70vh);
+                            min-height: 520px;
                             margin-top: 0;
+                            background: var(--task-suite-surface);
+                            border: 1px solid var(--task-suite-border);
                         }
                         .task-suite-calendar-grid--week {
                             grid-template-columns: repeat(7, minmax(0, 1fr));
                         }
                         .task-suite-calendar-day {
                             min-height: 120px;
-                            border: 1px solid var(--b3-border-color);
+                            border: 1px solid var(--task-suite-border);
                             border-radius: 8px;
                             padding: 6px;
                             display: flex;
                             flex-direction: column;
                             gap: 6px;
+                            background: var(--task-suite-surface);
                         }
                         .task-suite-calendar-day.dimmed {
                             opacity: .55;
@@ -465,25 +591,58 @@
                             gap: 4px;
                         }
                         .task-suite-calendar-grid--month .task-suite-calendar-day:not(:nth-child(7n)) {
-                            border-right: 1px solid var(--b3-border-color);
+                            border-right: 1px solid var(--task-suite-line);
                         }
                         .task-suite-calendar-grid--month .task-suite-calendar-day:nth-child(-n+35) {
-                            border-bottom: 1px solid var(--b3-border-color);
+                            border-bottom: 1px solid var(--task-suite-line);
                         }
                         .task-suite-calendar-panel--month {
-                            border: none;
+                            border: 1px solid var(--task-suite-border);
                             padding: 0;
-                            background: transparent;
+                            background: var(--task-suite-surface);
                         }
                         .task-suite-calendar-day-head {
                             display: flex;
                             justify-content: space-between;
                             align-items: flex-start;
                             gap: 6px;
+                            min-width: 0;
+                        }
+                        .task-suite-calendar-day-title {
+                            min-width: 0;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 2px;
+                        }
+                        .task-suite-calendar-day-title > strong {
+                            line-height: 1.2;
+                        }
+                        .task-suite-calendar-add-btn {
+                            min-height: 22px;
+                            height: 22px;
+                            padding: 0 6px;
+                            line-height: 20px;
+                            font-size: 12px;
+                            border-radius: 999px;
+                            flex-shrink: 0;
                         }
                         .task-suite-calendar-lunar {
                             font-size: 11px;
-                            color: var(--b3-theme-on-surface-light);
+                            color: var(--task-suite-text-soft);
+                        }
+                        .task-suite-calendar-day-tasks {
+                            display: flex;
+                            flex-direction: column;
+                            gap: 4px;
+                            min-height: 0;
+                        }
+                        .task-suite-calendar-grid--month .task-suite-calendar-day-tasks {
+                            flex: 1;
+                            overflow: auto;
+                            padding-right: 2px;
+                        }
+                        .task-suite-calendar-grid--month .task-suite-calendar-day-head {
+                            align-items: center;
                         }
                         .task-suite-calendar-task {
                             font-size: 12px;
@@ -491,6 +650,34 @@
                             background: var(--b3-theme-background);
                             padding: 2px 6px;
                             border-radius: 4px;
+                        }
+                        .task-suite-calendar-task.status-todo {
+                            border-left-color: var(--b3-theme-primary);
+                        }
+                        .task-suite-calendar-task.status-in-progress {
+                            border-left-color: var(--b3-card-info-color);
+                        }
+                        .task-suite-calendar-task.status-done {
+                            border-left-color: var(--b3-card-success-color);
+                        }
+                        .task-suite-calendar-task.status-blocked {
+                            border-left-color: var(--b3-card-warning-color);
+                        }
+                        .task-suite-calendar-task-line {
+                            display: flex;
+                            align-items: center;
+                            gap: 4px;
+                            min-width: 0;
+                        }
+                        .task-suite-calendar-task-text {
+                            flex: 1;
+                            min-width: 0;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                        }
+                        .task-suite-calendar-grid--month .task-suite-calendar-task {
+                            padding: 1px 4px;
                         }
                         .task-suite-calendar-task.priority-low {
                             background: color-mix(in srgb, var(--b3-card-info-background) 45%, var(--b3-theme-background));
@@ -506,18 +693,19 @@
                         }
                         .task-suite-task-time {
                             font-size: 11px;
-                            color: var(--b3-theme-on-surface-light);
+                            color: var(--task-suite-text-soft);
                             margin-right: 4px;
                         }
                         .task-suite-day-timeline {
-                            border: 1px solid var(--b3-border-color);
+                            border: 1px solid var(--task-suite-border);
                             border-radius: 8px;
                             overflow: hidden;
+                            background: var(--task-suite-surface);
                         }
                         .task-suite-day-hour-row {
                             display: grid;
                             grid-template-columns: 64px 1fr;
-                            border-top: 1px solid var(--b3-border-color);
+                            border-top: 1px solid var(--task-suite-border);
                             min-height: 34px;
                         }
                         .task-suite-day-hour-row:first-child {
@@ -526,9 +714,9 @@
                         .task-suite-day-hour-label {
                             padding: 6px 8px;
                             font-size: 12px;
-                            color: var(--b3-theme-on-surface-light);
-                            background: color-mix(in srgb, var(--b3-theme-surface-lighter) 28%, var(--b3-theme-background));
-                            border-right: 1px solid var(--b3-border-color);
+                            color: var(--task-suite-text-soft);
+                            background: var(--task-suite-muted);
+                            border-right: 1px solid var(--task-suite-border);
                         }
                         .task-suite-day-hour-content {
                             padding: 4px 8px;
@@ -544,6 +732,58 @@
                             background: var(--b3-theme-background);
                             border: 1px solid var(--b3-border-color);
                         }
+                        .task-suite-calendar-task-head {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 6px;
+                        }
+                        .task-suite-calendar-status {
+                            width: 18px;
+                            height: 18px;
+                            border-radius: 999px;
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 12px;
+                            color: var(--b3-theme-on-surface-light);
+                            background: var(--b3-theme-background);
+                            white-space: nowrap;
+                        }
+                        .task-suite-calendar-status.status-todo {
+                            background: color-mix(in srgb, var(--b3-theme-primary-lighter) 45%, var(--b3-theme-background));
+                            color: var(--b3-theme-primary);
+                        }
+                        .task-suite-calendar-status.status-in-progress {
+                            background: color-mix(in srgb, var(--b3-card-info-background) 65%, var(--b3-theme-background));
+                            color: var(--b3-card-info-color);
+                        }
+                        .task-suite-calendar-status.status-done {
+                            background: color-mix(in srgb, var(--b3-card-success-background) 65%, var(--b3-theme-background));
+                            color: var(--b3-card-success-color);
+                        }
+                        .task-suite-calendar-status.status-blocked {
+                            background: color-mix(in srgb, var(--b3-card-warning-background) 65%, var(--b3-theme-background));
+                            color: var(--b3-card-warning-color);
+                        }
+                        .task-suite-calendar-switch-btn {
+                            min-height: 20px;
+                            height: 20px;
+                            width: 24px;
+                            min-width: 24px;
+                            padding: 0;
+                            line-height: 18px;
+                            font-size: 12px;
+                            border-radius: 999px;
+                        }
+                        .task-suite-calendar-grid--month .task-suite-calendar-switch-btn {
+                            min-height: 16px;
+                            height: 16px;
+                            width: 16px;
+                            min-width: 16px;
+                            font-size: 10px;
+                            line-height: 14px;
+                        }
                         .task-suite-progress-slider-row {
                             display: flex;
                             align-items: center;
@@ -553,14 +793,14 @@
                             width: 44px;
                             text-align: right;
                             font-size: 12px;
-                            color: var(--b3-theme-on-surface-light);
+                            color: var(--task-suite-text-soft);
                         }
                         .task-suite-dependency-picker {
                             max-height: 180px;
                             overflow: auto;
-                            border: 1px solid var(--b3-border-color);
+                            border: 1px solid var(--task-suite-border);
                             border-radius: 6px;
-                            background: var(--b3-theme-background);
+                            background: var(--task-suite-surface);
                             padding: 6px;
                             display: flex;
                             flex-direction: column;
@@ -584,7 +824,7 @@
                         .task-suite-timeline-item {
                             border-left: 2px solid var(--b3-theme-primary);
                             padding: 6px 10px;
-                            background: var(--b3-theme-background);
+                            background: var(--task-suite-surface);
                             border-radius: 6px;
                         }
                         .task-suite-gantt {
@@ -593,29 +833,30 @@
                             gap: 12px;
                         }
                         .task-suite-gantt-canvas {
-                            border: 1px solid var(--b3-border-color);
+                            border: 1px solid var(--task-suite-border);
                             border-radius: 8px;
                             overflow: auto;
                             position: relative;
+                            background: var(--task-suite-surface);
                         }
                         .task-suite-gantt-row {
                             display: grid;
                             grid-template-columns: 260px 1fr;
                             min-height: 36px;
-                            border-bottom: 1px solid var(--b3-border-color);
+                            border-bottom: 1px solid var(--task-suite-border);
                         }
                         .task-suite-gantt-axis-row {
                             display: grid;
                             grid-template-columns: 260px 1fr;
                             min-height: 30px;
-                            border-bottom: 1px solid var(--b3-border-color);
-                            background: var(--b3-theme-surface-lighter);
+                            border-bottom: 1px solid var(--task-suite-border);
+                            background: var(--task-suite-muted);
                         }
                         .task-suite-gantt-axis-label {
                             padding: 6px 8px;
                             font-size: 12px;
-                            color: var(--b3-theme-on-surface-light);
-                            border-right: 1px solid var(--b3-border-color);
+                            color: var(--task-suite-text-soft);
+                            border-right: 1px solid var(--task-suite-border);
                         }
                         .task-suite-gantt-axis-track {
                             position: relative;
@@ -626,14 +867,14 @@
                             position: absolute;
                             top: 0;
                             bottom: 0;
-                            border-left: 1px solid var(--b3-border-color);
+                            border-left: 1px solid var(--task-suite-border);
                         }
                         .task-suite-gantt-axis-text {
                             position: absolute;
                             top: 6px;
                             transform: translateX(-50%);
                             font-size: 11px;
-                            color: var(--b3-theme-on-surface-light);
+                            color: var(--task-suite-text-soft);
                             white-space: nowrap;
                             padding: 0 2px;
                         }
@@ -653,9 +894,9 @@
                             min-width: 800px;
                             background: repeating-linear-gradient(
                                 to right,
-                                var(--b3-theme-background) 0,
-                                var(--b3-theme-background) 29px,
-                                var(--b3-border-color) 30px
+                                var(--task-suite-surface) 0,
+                                var(--task-suite-surface) 29px,
+                                var(--task-suite-line) 30px
                             );
                         }
                         .task-suite-gantt-bar {
@@ -676,7 +917,7 @@
                             background: var(--b3-card-warning-color);
                         }
                         .task-suite-resource {
-                            border: 1px solid var(--b3-border-color);
+                            border: 1px solid var(--task-suite-border);
                             border-radius: 8px;
                             padding: 8px;
                             display: flex;
@@ -721,9 +962,9 @@
                                 grid-template-columns: repeat(2, minmax(0, 1fr));
                             }
                             .task-suite-calendar-grid--month {
-                                height: auto;
-                                min-height: 0;
-                                grid-template-rows: auto;
+                                height: var(--task-suite-month-height, 70vh);
+                                min-height: 420px;
+                                grid-template-rows: repeat(6, minmax(0, 1fr));
                                 grid-template-columns: repeat(7, minmax(0, 1fr));
                             }
                             .task-suite-calendar-panel--month {
@@ -736,7 +977,10 @@
                     </style>
                     <div class="task-suite-toolbar">
                         <div class="layout-tab-bar fn__flex task-suite-tabs" data-role="tabs"></div>
-                        <button class="b3-button b3-button--outline" data-action="run-self-test">运行自测</button>
+                        <div class="fn__flex" style="gap: 8px;">
+                            <button class="b3-button b3-button--outline" data-action="toggle-theme">${themeMode === "dark" ? "浅色主题" : "暗黑主题"}</button>
+                            <button class="b3-button b3-button--outline" data-action="run-self-test">运行自测</button>
+                        </div>
                     </div>
                     <div class="task-suite-content" data-role="content"></div>
                 </div>
@@ -788,6 +1032,12 @@
                 const currentIndex = statusQueue.indexOf(task.status);
                 const next = statusQueue[(currentIndex + 1) % statusQueue.length];
                 this.updateTask(task.id, { status: next }, "状态更新");
+                return;
+            }
+            if (action === "cycle-calendar-status") {
+                const taskId = target.dataset.taskId || "";
+                const date = target.dataset.date || "";
+                this.cycleCalendarOccurrenceStatus(taskId, date);
                 return;
             }
             if (action === "add-subtask") {
@@ -866,6 +1116,13 @@
             }
             if (action === "run-self-test") {
                 this.runSelfTest();
+                return;
+            }
+            if (action === "toggle-theme") {
+                const current = this.normalizeThemeMode(this.state.settings.themeMode);
+                this.state.settings.themeMode = current === "dark" ? "light" : "dark";
+                this.saveState();
+                this.mountMainTab();
             }
         }
 
@@ -909,6 +1166,14 @@
                 this.renderApp();
                 return;
             }
+            if (target.dataset.filter === "calendar-month-height") {
+                const next = this.normalizeCalendarMonthHeight(target.value);
+                this.ui.calendarMonthHeight = next;
+                this.state.settings.calendarMonthHeight = next;
+                this.saveState();
+                this.renderApp();
+                return;
+            }
             if (target.dataset.filter === "gantt-start") {
                 this.ui.ganttStart = target.value || "";
                 this.renderApp();
@@ -945,30 +1210,37 @@
         }
 
         handleDragStart(event) {
-            const card = event.target.closest("[data-draggable-task-id]");
+            const card = this.getClosestFromEvent(event, "[data-draggable-task-id]");
             if (!card) {
                 return;
             }
             card.classList.add("dragging");
+            this.draggingTaskId = card.dataset.draggableTaskId || "";
             event.dataTransfer.effectAllowed = "move";
             event.dataTransfer.setData("text/plain", card.dataset.draggableTaskId || "");
         }
 
         handleDragOver(event) {
-            const columnBody = event.target.closest("[data-drop-status]");
+            const columnBody = this.getClosestFromEvent(event, "[data-drop-status]");
             if (!columnBody) {
                 return;
             }
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
+            if (this.dragOverColumnBody && this.dragOverColumnBody !== columnBody) {
+                this.dragOverColumnBody.classList.remove("drag-over");
+            }
+            this.dragOverColumnBody = columnBody;
+            this.dragOverColumnBody.classList.add("drag-over");
         }
 
         handleDrop(event) {
-            const columnBody = event.target.closest("[data-drop-status]");
+            const columnBody = this.getClosestFromEvent(event, "[data-drop-status]");
             if (!columnBody) {
                 return;
             }
             event.preventDefault();
+            this.clearKanbanDragOver();
             const taskId = event.dataTransfer.getData("text/plain");
             const task = this.findTask(taskId);
             if (!task) {
@@ -976,16 +1248,21 @@
             }
             const nextStatus = columnBody.dataset.dropStatus || "todo";
             if (task.status !== nextStatus) {
+                this.flashKanbanDropSuccess(task.id);
                 this.updateTask(task.id, { status: nextStatus }, "看板拖拽");
+                return;
             }
+            this.flashKanbanDropSuccess(task.id);
         }
 
         handleDragEnd(event) {
-            const card = event.target.closest("[data-draggable-task-id]");
+            const card = this.getClosestFromEvent(event, "[data-draggable-task-id]");
             if (!card) {
+                this.clearKanbanDragOver();
                 return;
             }
             card.classList.remove("dragging");
+            this.clearKanbanDragOver();
         }
 
         renderApp() {
@@ -1070,9 +1347,10 @@
                     </div>
                     <div style="margin-top: 6px;">${this.escapeHtml(task.description || "暂无描述")}</div>
                     <div class="task-suite-meta" style="margin-top: 8px;">
-                        ${task.startDate ? `<span>开始: ${task.startDate}</span>` : ""}
-                        ${task.dueDate ? `<span>截止: ${task.dueDate}</span>` : ""}
-                        ${task.endDate ? `<span>结束: ${task.endDate}</span>` : ""}
+                        ${task.startDate ? `<span>计划开始: ${task.startDate}</span>` : ""}
+                        ${task.dueDate ? `<span>计划截止: ${task.dueDate}</span>` : ""}
+                        ${task.endDate ? `<span>实际完成: ${task.endDate}</span>` : ""}
+                        ${task.reminderTime ? `<span>提醒: ${task.reminderTime}</span>` : ""}
                         ${task.resource ? `<span>资源: ${this.escapeHtml(task.resource)}</span>` : ""}
                     </div>
                     ${task.tags.length ? `
@@ -1166,12 +1444,16 @@
                         </div>
                         <div class="task-suite-column-body" data-drop-status="${column.status}">
                             ${tasks.map((task) => `
-                                <div class="task-suite-kanban-card" draggable="true" data-draggable-task-id="${task.id}">
-                                    <div style="font-weight: 600;">${this.escapeHtml(task.title)}</div>
-                                    <div class="task-suite-meta">
-                                        <span>${this.getPriorityLabel(task.priority)}</span>
-                                        <span>${task.progress}%</span>
+                                <div class="task-suite-kanban-card ${this.getPriorityClass(task.priority)} ${this.ui.kanbanDropTaskId === task.id ? "drop-success" : ""}" draggable="true" data-draggable-task-id="${task.id}">
+                                    <div class="task-suite-kanban-title">${this.escapeHtml(task.title)}</div>
+                                    <div class="task-suite-kanban-meta">
+                                        <span class="task-suite-kanban-chip">进度: ${task.progress}%</span>
+                                        ${task.repeat !== "none" ? `<span class="task-suite-kanban-chip">重复: ${this.getRepeatLabel(task.repeat)}</span>` : ""}
+                                        ${task.startDate ? `<span class="task-suite-kanban-chip">开始: ${task.startDate.slice(0, 10)}</span>` : ""}
+                                        ${task.dueDate ? `<span class="task-suite-kanban-chip">截止: ${task.dueDate.slice(0, 10)}</span>` : ""}
+                                        ${task.tags.length ? `<span class="task-suite-kanban-chip">${task.tags.slice(0, 2).map((tag) => `#${this.escapeHtml(tag)}`).join(" ")}</span>` : ""}
                                     </div>
+                                    ${task.description ? `<div class="task-suite-kanban-desc">${this.escapeHtml(task.description)}</div>` : ""}
                                 </div>
                             `).join("")}
                         </div>
@@ -1197,6 +1479,7 @@
             const mode = this.ui.calendarMode || "month";
             const cursor = this.parseDate(this.ui.calendarCursor) || new Date();
             const range = this.getCalendarRange(mode, cursor);
+            const monthHeight = this.normalizeCalendarMonthHeight(this.ui.calendarMonthHeight || this.state.settings.calendarMonthHeight);
             const allOccurrences = this.getOccurrencesForRange(range.start, range.end);
             const mapByDay = new Map();
             allOccurrences.forEach((item) => {
@@ -1234,6 +1517,12 @@
                             <div class="task-suite-meta">
                                 展示区间: ${range.start} 至 ${range.end}
                             </div>
+                            <div class="task-suite-meta">
+                                <span>月视图密度</span>
+                                <select class="b3-select" data-filter="calendar-month-height">
+                                    ${[60, 70, 80].map((item) => `<option value="${item}" ${monthHeight === item ? "selected" : ""}>${item}vh</option>`).join("")}
+                                </select>
+                            </div>
                         </div>
                         <div class="task-suite-card">
                             <div class="fn__flex" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -1270,28 +1559,52 @@
                         <div class="task-suite-meta">
                             展示区间: ${range.start} 至 ${range.end}
                         </div>
+                            <div class="task-suite-meta">
+                                <span>月视图密度</span>
+                                <select class="b3-select" data-filter="calendar-month-height">
+                                    ${[60, 70, 80].map((item) => `<option value="${item}" ${monthHeight === item ? "selected" : ""}>${item}vh</option>`).join("")}
+                                </select>
+                            </div>
                     </div>
                     <div class="task-suite-card ${mode === "month" ? "task-suite-calendar-panel--month" : ""}">
-                        <div class="task-suite-calendar-grid task-suite-calendar-grid--${mode}">
+                        <div class="task-suite-calendar-grid task-suite-calendar-grid--${mode}" style="${mode === "month" ? `--task-suite-month-height:${monthHeight}vh;` : ""}">
                             ${range.days.map((day) => {
                                 const tasks = mapByDay.get(day.date) || [];
-                                const renderTasks = tasks.slice(0, mode === "month" ? 3 : 4);
+                                const renderTasks = mode === "month" ? tasks : tasks.slice(0, 4);
                                 return `
                                     <div class="task-suite-calendar-day ${day.dimmed ? "dimmed" : ""}">
                                         <div class="task-suite-calendar-day-head">
-                                            <div>
+                                            <div class="task-suite-calendar-day-title">
                                                 <strong>${day.label}</strong>
                                                 ${mode === "month" ? `<div class="task-suite-calendar-lunar">${this.getLunarLabel(day.date)}</div>` : ""}
                                             </div>
-                                            <button class="b3-button b3-button--outline" data-action="new-task-on-date" data-date="${day.date}">+</button>
+                                            <button class="b3-button b3-button--outline task-suite-calendar-add-btn" data-action="new-task-on-date" data-date="${day.date}">+</button>
                                         </div>
-                                        ${renderTasks.map((item) => `
-                                            <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)}">
-                                                ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
-                                                ${this.escapeHtml(item.task.title)}
-                                            </div>
-                                        `).join("")}
-                                        ${tasks.length > renderTasks.length ? `<div class="task-suite-meta">+${tasks.length - renderTasks.length} 项</div>` : ""}
+                                        <div class="task-suite-calendar-day-tasks">
+                                            ${renderTasks.map((item) => mode === "month" ? `
+                                                <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${this.getStatusClass(this.getOccurrenceStatus(item.task, day.date))}">
+                                                    <div class="task-suite-calendar-task-line">
+                                                        <div class="task-suite-calendar-task-text">
+                                                            ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
+                                                            ${this.escapeHtml(item.task.title)}
+                                                        </div>
+                                                        <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
+                                                    </div>
+                                                </div>
+                                            ` : `
+                                                <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${this.getStatusClass(this.getOccurrenceStatus(item.task, day.date))}">
+                                                    <div class="task-suite-calendar-task-head">
+                                                        <span class="task-suite-calendar-status ${this.getStatusClass(this.getOccurrenceStatus(item.task, day.date))}" title="${this.getStatusLabel(this.getOccurrenceStatus(item.task, day.date))}">${this.getStatusIcon(this.getOccurrenceStatus(item.task, day.date))}</span>
+                                                        <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
+                                                    </div>
+                                                    <div>
+                                                        ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
+                                                        ${this.escapeHtml(item.task.title)}
+                                                    </div>
+                                                </div>
+                                            `).join("")}
+                                        </div>
+                                        ${mode !== "month" && tasks.length > renderTasks.length ? `<div class="task-suite-meta">+${tasks.length - renderTasks.length} 项</div>` : ""}
                                     </div>
                                 `;
                             }).join("")}
@@ -1310,7 +1623,8 @@
             const timelineDays = this.diffDays(range.startDate, range.endDate) + 1;
             const trackWidth = Math.max(800, timelineDays * 30);
             const criticalSet = this.getCriticalPathSet(tasks);
-            const axisStep = timelineDays > 120 ? 14 : (timelineDays > 60 ? 7 : (timelineDays > 31 ? 3 : 1));
+            const baseAxisStep = timelineDays > 120 ? 14 : (timelineDays > 60 ? 7 : (timelineDays > 31 ? 3 : 1));
+            const axisStep = Math.max(baseAxisStep, Math.ceil(72 / 30));
             const tickPoints = [];
             for (let i = 0; i < timelineDays; i += axisStep) {
                 tickPoints.push(i);
@@ -1442,7 +1756,7 @@
                 width: this.isMobile ? "96vw" : "760px",
                 height: this.isMobile ? "90vh" : "84vh",
                 content: `
-                    <div class="task-suite-root" style="padding: 14px;">
+                    <div class="task-suite-root" style="padding: 0;">
                         <form data-form="task-editor-dialog" class="task-suite-card">
                             <input type="hidden" name="taskId" value="${task.id}">
                             <div class="task-suite-grid">
@@ -1463,16 +1777,20 @@
                                     </select>
                                 </div>
                                 <div class="task-suite-field" style="grid-column: span 3;">
-                                    <label>开始时间</label>
+                                    <label>计划开始时间</label>
                                     <input class="b3-text-field fn__block" type="datetime-local" name="startDate" value="${this.escapeHtml(this.formatDateTimeLocal(task.startDate))}">
                                 </div>
                                 <div class="task-suite-field" style="grid-column: span 3;">
-                                    <label>截止时间</label>
+                                    <label>计划截止时间</label>
                                     <input class="b3-text-field fn__block" type="datetime-local" name="dueDate" value="${this.escapeHtml(this.formatDateTimeLocal(task.dueDate))}">
                                 </div>
                                 <div class="task-suite-field" style="grid-column: span 3;">
-                                    <label>结束时间</label>
+                                    <label>实际完成时间</label>
                                     <input class="b3-text-field fn__block" type="datetime-local" name="endDate" value="${this.escapeHtml(this.formatDateTimeLocal(task.endDate))}">
+                                </div>
+                                <div class="task-suite-field" style="grid-column: span 3;">
+                                    <label>提醒时间</label>
+                                    <input class="b3-text-field fn__block" type="datetime-local" name="reminderTime" value="${this.escapeHtml(this.formatDateTimeLocal(task.reminderTime))}">
                                 </div>
                                 <div class="task-suite-field" style="grid-column: span 3;">
                                     <label>重复规则</label>
@@ -1570,6 +1888,7 @@
                 startDate: this.normalizeDateTimeInput((formData.get("startDate") || "").toString()),
                 dueDate: this.normalizeDateTimeInput((formData.get("dueDate") || "").toString()),
                 endDate: this.normalizeDateTimeInput((formData.get("endDate") || "").toString()),
+                reminderTime: this.normalizeDateTimeInput((formData.get("reminderTime") || "").toString()),
                 progress: this.normalizeProgress((formData.get("progress") || "").toString()),
                 resource: (formData.get("resource") || "").toString().trim(),
                 tags: (formData.get("tags") || "").toString().split(",").map((tag) => tag.trim()).filter(Boolean),
@@ -1596,6 +1915,7 @@
                 startDate: payload.startDate || "",
                 dueDate: payload.dueDate || "",
                 endDate: payload.endDate || "",
+                reminderTime: payload.reminderTime || "",
                 progress: this.normalizeProgress(payload.progress),
                 resource: payload.resource || "",
                 dependencies: payload.dependencies || [],
@@ -1634,6 +1954,7 @@
                 return;
             }
             this.state.tasks = this.state.tasks.filter((item) => item.id !== taskId);
+            this.removeTaskOccurrenceStatus(taskId);
             this.state.tasks.forEach((item) => {
                 item.dependencies = item.dependencies.filter((id) => id !== taskId);
             });
@@ -2068,8 +2389,69 @@
             return this.state.tasks.find((task) => task.id === taskId);
         }
 
+        getClosestFromEvent(event, selector) {
+            if (!event || !selector) {
+                return null;
+            }
+            if (typeof event.composedPath === "function") {
+                const path = event.composedPath();
+                for (const node of path) {
+                    if (node && typeof node.matches === "function" && node.matches(selector)) {
+                        return node;
+                    }
+                }
+            }
+            const target = event.target;
+            if (target && typeof target.closest === "function") {
+                return target.closest(selector);
+            }
+            if (target && target.parentElement && typeof target.parentElement.closest === "function") {
+                return target.parentElement.closest(selector);
+            }
+            return null;
+        }
+
+        clearKanbanDragOver() {
+            if (!this.dragOverColumnBody) {
+                return;
+            }
+            this.dragOverColumnBody.classList.remove("drag-over");
+            this.dragOverColumnBody = null;
+        }
+
+        flashKanbanDropSuccess(taskId) {
+            if (!taskId) {
+                return;
+            }
+            this.ui.kanbanDropTaskId = taskId;
+            if (this.dragFeedbackTimer) {
+                clearTimeout(this.dragFeedbackTimer);
+            }
+            this.dragFeedbackTimer = setTimeout(() => {
+                this.ui.kanbanDropTaskId = "";
+                this.dragFeedbackTimer = null;
+                if (this.ui.activeTab === "kanban") {
+                    this.renderApp();
+                }
+            }, 900);
+        }
+
         getStatusLabel(status) {
             return STATUS_OPTIONS.find((item) => item.value === status)?.label || status;
+        }
+
+        getStatusIcon(status) {
+            const normalized = this.normalizeStatus(status);
+            if (normalized === "todo") {
+                return "○";
+            }
+            if (normalized === "in_progress") {
+                return "◔";
+            }
+            if (normalized === "done") {
+                return "✓";
+            }
+            return "⛔";
         }
 
         getPriorityLabel(priority) {
@@ -2143,7 +2525,9 @@
                         <div class="task-suite-day-hour-content">
                             ${hourTasks.map((item) => `
                                 <span class="task-suite-day-event ${this.getPriorityClass(item.task.priority)}">
+                                    <span class="task-suite-calendar-status ${this.getStatusClass(this.getOccurrenceStatus(item.task, day))}" title="${this.getStatusLabel(this.getOccurrenceStatus(item.task, day))}">${this.getStatusIcon(this.getOccurrenceStatus(item.task, day))}</span>
                                     ${this.getCalendarTaskTimeLabel(item.task, day) ? `${this.getCalendarTaskTimeLabel(item.task, day)} ` : ""}${this.escapeHtml(item.task.title)}
+                                    <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day}">↻</button>
                                 </span>
                             `).join("")}
                         </div>
@@ -2165,6 +2549,120 @@
                 return raw.replace(/\s+/g, "");
             } catch (error) {
                 return "";
+            }
+        }
+
+        getStatusClass(status) {
+            const normalized = this.normalizeStatus(status);
+            if (normalized === "in_progress") {
+                return "status-in-progress";
+            }
+            return `status-${normalized}`;
+        }
+
+        getOccurrenceKey(taskId, date) {
+            return `${taskId}::${date}`;
+        }
+
+        getOccurrenceStatus(task, date) {
+            if (!task || !task.id || !date) {
+                return "todo";
+            }
+            const key = this.getOccurrenceKey(task.id, date);
+            const value = this.state.occurrenceStatuses[key];
+            if (value) {
+                return this.normalizeStatus(value);
+            }
+            return this.normalizeStatus(task.status);
+        }
+
+        cycleCalendarOccurrenceStatus(taskId, date) {
+            const task = this.findTask(taskId);
+            if (!task || !date) {
+                return;
+            }
+            const statusQueue = STATUS_OPTIONS.map((item) => item.value);
+            const current = this.getOccurrenceStatus(task, date);
+            const currentIndex = statusQueue.indexOf(current);
+            const next = statusQueue[(currentIndex + 1) % statusQueue.length];
+            if (task.repeat === "none") {
+                this.updateTask(task.id, { status: next }, "日历状态更新");
+                return;
+            }
+            const key = this.getOccurrenceKey(task.id, date);
+            if (next === this.normalizeStatus(task.status)) {
+                delete this.state.occurrenceStatuses[key];
+            } else {
+                this.state.occurrenceStatuses[key] = next;
+            }
+            this.pushHistory(task.id, "实例状态更新", `${date} 的任务实例状态更新为 ${this.getStatusLabel(next)}`);
+            this.commitAndRender();
+        }
+
+        removeTaskOccurrenceStatus(taskId) {
+            const prefix = `${taskId}::`;
+            Object.keys(this.state.occurrenceStatuses).forEach((key) => {
+                if (key.startsWith(prefix)) {
+                    delete this.state.occurrenceStatuses[key];
+                }
+            });
+            Object.keys(this.state.reminderFired).forEach((key) => {
+                if (key.startsWith(prefix)) {
+                    delete this.state.reminderFired[key];
+                }
+            });
+        }
+
+        startReminderLoop() {
+            if (this.reminderTimer) {
+                clearInterval(this.reminderTimer);
+            }
+            this.checkDueReminders();
+            this.reminderTimer = setInterval(() => this.checkDueReminders(), 30000);
+        }
+
+        async checkDueReminders() {
+            const now = Date.now();
+            let changed = false;
+            for (const task of this.state.tasks) {
+                if (!task.reminderTime || this.normalizeStatus(task.status) === "done") {
+                    continue;
+                }
+                const reminderDate = this.parseDate(task.reminderTime);
+                if (!reminderDate) {
+                    continue;
+                }
+                const key = `${task.id}::${task.reminderTime}`;
+                if (this.state.reminderFired[key]) {
+                    continue;
+                }
+                if (reminderDate.getTime() > now) {
+                    continue;
+                }
+                await this.pushReminder(task);
+                this.state.reminderFired[key] = new Date().toISOString();
+                changed = true;
+            }
+            if (changed) {
+                await this.saveState();
+            }
+        }
+
+        async pushReminder(task) {
+            const message = `任务提醒：${task.title}`;
+            showMessage(message, 6000);
+            try {
+                await fetch("/api/notification/pushMsg", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        msg: message,
+                        timeout: 7000
+                    })
+                });
+            } catch (error) {
             }
         }
 

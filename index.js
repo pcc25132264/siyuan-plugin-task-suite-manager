@@ -97,8 +97,11 @@
                 clearTimeout(this.dragFeedbackTimer);
                 this.dragFeedbackTimer = null;
             }
+            if (this.dialog) {
+                this.dialog.destroy();
+                this.dialog = null;
+            }
             this.tabElement = null;
-            this.dialog = null;
             this.root = null;
         }
 
@@ -266,21 +269,41 @@
         }
 
         openMainTab() {
-            siyuan.openTab({
-                app: this.app,
-                custom: {
-                    icon: "iconList",
-                    title: "任务管理中心",
-                    id: `${this.name}task-suite-manager-tab`
+            const canOpenTab = typeof siyuan.openTab === "function" && this.app;
+            if (!canOpenTab) {
+                this.openDialog();
+                return;
+            }
+            try {
+                siyuan.openTab({
+                    app: this.app,
+                    custom: {
+                        icon: "iconList",
+                        title: "任务管理中心",
+                        id: `${this.name}task-suite-manager-tab`
+                    }
+                });
+                if (this.tabElement) {
+                    this.mountMainTab();
                 }
-            });
-            if (this.tabElement) {
-                this.mountMainTab();
+            } catch (error) {
+                this.openDialog();
             }
         }
 
         openDialog() {
-            this.openMainTab();
+            if (this.dialog) {
+                this.dialog.destroy();
+            }
+            this.dialog = new Dialog({
+                title: "任务管理中心",
+                width: this.isMobile ? "96vw" : "1240px",
+                height: this.isMobile ? "92vh" : "88vh",
+                content: this.renderDialogShell()
+            });
+            this.root = this.dialog.element.querySelector(".task-suite-root");
+            this.bindRootEvents();
+            this.renderApp();
         }
 
         mountMainTab() {
@@ -301,15 +324,19 @@
                         .task-suite-root {
                             --task-suite-bg: #ffffff;
                             --task-suite-surface: #ffffff;
-                            --task-suite-muted: #f5f7fb;
-                            --task-suite-border: #dbe1ea;
-                            --task-suite-line: #e5e9f0;
+                            --task-suite-muted: #ffffff;
+                            --task-suite-border: #d9e0ea;
+                            --task-suite-line: #e3e8ef;
                             --task-suite-text: #1f2937;
                             --task-suite-text-soft: #64748b;
+                            --task-suite-item-bg: #f8fafc;
+                            --task-suite-item-text: #1f2937;
+                            --task-suite-chip-bg: #eef2f7;
+                            --task-suite-ghost-text: #6b7280;
                             height: 100%;
                             display: flex;
                             flex-direction: column;
-                            gap: 10px;
+                            gap: 0;
                             padding: 0;
                             overflow: hidden;
                             background: var(--task-suite-bg);
@@ -319,17 +346,22 @@
                             --task-suite-bg: #0f1115;
                             --task-suite-surface: #171a20;
                             --task-suite-muted: #12151b;
-                            --task-suite-border: #2b323e;
-                            --task-suite-line: #232a35;
-                            --task-suite-text: #e5e7eb;
-                            --task-suite-text-soft: #9ca3af;
+                            --task-suite-border: #313948;
+                            --task-suite-line: #2a3140;
+                            --task-suite-text: #f3f6fb;
+                            --task-suite-text-soft: #c2cad7;
+                            --task-suite-item-bg: #1d2430;
+                            --task-suite-item-text: #eef3fb;
+                            --task-suite-chip-bg: #222a36;
+                            --task-suite-ghost-text: #aab4c3;
                         }
                         .task-suite-toolbar {
                             display: flex;
                             flex-wrap: wrap;
-                            gap: 10px;
+                            gap: 6px;
                             align-items: center;
                             justify-content: space-between;
+                            padding: 0 0 6px;
                         }
                         .task-suite-tabs.layout-tab-bar {
                             border-bottom: 1px solid var(--task-suite-border);
@@ -348,10 +380,9 @@
                             min-height: 0;
                             flex: 1;
                             overflow: auto;
-                            border-radius: 8px;
-                            padding: 12px;
-                            background: var(--task-suite-muted);
-                            border: 1px solid var(--task-suite-border);
+                            border-radius: 6px;
+                            padding: 8px 10px 10px;
+                            background: var(--task-suite-bg);
                         }
                         .task-suite-list-toolbar {
                             display: flex;
@@ -363,7 +394,7 @@
                         .task-suite-grid {
                             display: grid;
                             grid-template-columns: repeat(12, minmax(0, 1fr));
-                            gap: 10px;
+                            gap: 8px;
                         }
                         .task-suite-field {
                             display: flex;
@@ -375,7 +406,7 @@
                             color: var(--task-suite-text-soft);
                         }
                         .task-suite-card {
-                            border-radius: 8px;
+                            border-radius: 6px;
                             padding: 10px;
                             background: var(--task-suite-surface);
                             border: 1px solid var(--task-suite-border);
@@ -383,7 +414,10 @@
                         .task-suite-list {
                             display: flex;
                             flex-direction: column;
-                            gap: 10px;
+                            gap: 0;
+                        }
+                        .task-suite-list > .task-suite-card + .task-suite-card {
+                            margin-top: 6px;
                         }
                         .task-suite-meta {
                             display: flex;
@@ -415,7 +449,8 @@
                         .task-suite-columns {
                             display: grid;
                             grid-template-columns: repeat(4, minmax(0, 1fr));
-                            gap: 10px;
+                            gap: 6px;
+                            margin-top: 12px;
                         }
                         .task-suite-column {
                             min-height: 220px;
@@ -424,18 +459,6 @@
                             border: 1px solid var(--task-suite-border);
                             display: flex;
                             flex-direction: column;
-                        }
-                        .task-suite-column--todo {
-                            background: color-mix(in srgb, var(--b3-theme-primary-lighter) 14%, var(--b3-theme-background));
-                        }
-                        .task-suite-column--in-progress {
-                            background: color-mix(in srgb, var(--b3-card-info-background) 35%, var(--b3-theme-background));
-                        }
-                        .task-suite-column--done {
-                            background: color-mix(in srgb, var(--b3-card-success-background) 35%, var(--b3-theme-background));
-                        }
-                        .task-suite-column--blocked {
-                            background: color-mix(in srgb, var(--b3-card-warning-background) 35%, var(--b3-theme-background));
                         }
                         .task-suite-column-header {
                             display: flex;
@@ -464,6 +487,7 @@
                             display: flex;
                             flex-direction: column;
                             gap: 8px;
+                            background: var(--task-suite-surface);
                             transition: background-color .2s ease;
                         }
                         .task-suite-column-body.drag-over {
@@ -471,23 +495,24 @@
                         }
                         .task-suite-kanban-card {
                             border-radius: 8px;
-                            background: var(--b3-theme-surface);
+                            background: var(--task-suite-item-bg);
+                            color: var(--task-suite-item-text);
                             padding: 8px;
                             cursor: grab;
                             transition: transform .16s ease, border-color .16s ease, background-color .16s ease;
                             border: 1px solid transparent;
                         }
                         .task-suite-kanban-card.priority-low {
-                            background: color-mix(in srgb, var(--b3-card-info-background) 45%, var(--b3-theme-background));
+                            background: color-mix(in srgb, var(--b3-card-info-background) 34%, var(--task-suite-item-bg));
                         }
                         .task-suite-kanban-card.priority-medium {
-                            background: color-mix(in srgb, var(--b3-theme-background-light) 55%, var(--b3-theme-background));
+                            background: color-mix(in srgb, var(--task-suite-chip-bg) 72%, var(--task-suite-item-bg));
                         }
                         .task-suite-kanban-card.priority-high {
-                            background: color-mix(in srgb, var(--b3-card-warning-background) 58%, var(--b3-theme-background));
+                            background: color-mix(in srgb, var(--b3-card-warning-background) 42%, var(--task-suite-item-bg));
                         }
                         .task-suite-kanban-card.priority-urgent {
-                            background: color-mix(in srgb, var(--b3-card-error-background) 60%, var(--b3-theme-background));
+                            background: color-mix(in srgb, var(--b3-card-error-background) 44%, var(--task-suite-item-bg));
                         }
                         .task-suite-kanban-title {
                             font-weight: 600;
@@ -495,7 +520,7 @@
                         }
                         .task-suite-kanban-desc {
                             font-size: 12px;
-                            color: var(--b3-theme-on-surface-light);
+                            color: var(--task-suite-ghost-text);
                             margin-top: 4px;
                             display: -webkit-box;
                             -webkit-line-clamp: 2;
@@ -508,12 +533,13 @@
                             gap: 6px;
                             flex-wrap: wrap;
                             font-size: 11px;
-                            color: var(--b3-theme-on-surface-light);
+                            color: var(--task-suite-ghost-text);
                         }
                         .task-suite-kanban-chip {
                             border-radius: 999px;
                             padding: 1px 7px;
-                            background: var(--b3-theme-background);
+                            background: var(--task-suite-chip-bg);
+                            color: var(--task-suite-item-text);
                             white-space: nowrap;
                         }
                         .task-suite-kanban-card.dragging {
@@ -551,19 +577,20 @@
                         .task-suite-calendar-grid {
                             display: grid;
                             grid-template-columns: repeat(7, minmax(0, 1fr));
-                            gap: 8px;
-                            margin-top: 10px;
+                            gap: 6px;
+                            margin-top: 6px;
                         }
                         .task-suite-calendar-grid--month {
                             gap: 0;
-                            border-radius: 8px;
-                            overflow: hidden;
+                            border-radius: 0;
+                            overflow: visible;
                             grid-template-rows: repeat(6, minmax(0, 1fr));
                             height: var(--task-suite-month-height, 70vh);
                             min-height: 520px;
                             margin-top: 0;
                             background: var(--task-suite-surface);
-                            border: 1px solid var(--task-suite-border);
+                            border: none;
+                            box-sizing: border-box;
                         }
                         .task-suite-calendar-grid--week {
                             grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -571,7 +598,6 @@
                         .task-suite-calendar-day {
                             min-height: 120px;
                             border: 1px solid var(--task-suite-border);
-                            border-radius: 8px;
                             padding: 6px;
                             display: flex;
                             flex-direction: column;
@@ -589,17 +615,17 @@
                             border-radius: 0;
                             padding: 4px 6px;
                             gap: 4px;
-                        }
-                        .task-suite-calendar-grid--month .task-suite-calendar-day:not(:nth-child(7n)) {
-                            border-right: 1px solid var(--task-suite-line);
-                        }
-                        .task-suite-calendar-grid--month .task-suite-calendar-day:nth-child(-n+35) {
-                            border-bottom: 1px solid var(--task-suite-line);
+                            position: relative;
+                            outline: 1px solid var(--task-suite-line);
+                            background: var(--task-suite-surface);
+                            box-sizing: border-box;
                         }
                         .task-suite-calendar-panel--month {
-                            border: 1px solid var(--task-suite-border);
+                            border-radius: 8px;
+                            overflow: hidden;
                             padding: 0;
                             background: var(--task-suite-surface);
+                            border: 1px solid var(--task-suite-border);
                         }
                         .task-suite-calendar-day-head {
                             display: flex;
@@ -647,7 +673,8 @@
                         .task-suite-calendar-task {
                             font-size: 12px;
                             border-left: 3px solid var(--b3-theme-primary);
-                            background: var(--b3-theme-background);
+                            background: var(--task-suite-item-bg);
+                            color: var(--task-suite-item-text);
                             padding: 2px 6px;
                             border-radius: 4px;
                         }
@@ -680,16 +707,16 @@
                             padding: 1px 4px;
                         }
                         .task-suite-calendar-task.priority-low {
-                            background: color-mix(in srgb, var(--b3-card-info-background) 45%, var(--b3-theme-background));
+                            background: color-mix(in srgb, var(--b3-card-info-background) 34%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task.priority-medium {
-                            background: color-mix(in srgb, var(--b3-theme-background-light) 50%, var(--b3-theme-background));
+                            background: color-mix(in srgb, var(--task-suite-chip-bg) 72%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task.priority-high {
-                            background: color-mix(in srgb, var(--b3-card-warning-background) 55%, var(--b3-theme-background));
+                            background: color-mix(in srgb, var(--b3-card-warning-background) 40%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task.priority-urgent {
-                            background: color-mix(in srgb, var(--b3-card-error-background) 58%, var(--b3-theme-background));
+                            background: color-mix(in srgb, var(--b3-card-error-background) 42%, var(--task-suite-item-bg));
                         }
                         .task-suite-task-time {
                             font-size: 11px;
@@ -1122,7 +1149,11 @@
                 const current = this.normalizeThemeMode(this.state.settings.themeMode);
                 this.state.settings.themeMode = current === "dark" ? "light" : "dark";
                 this.saveState();
-                this.mountMainTab();
+                if (this.tabElement) {
+                    this.mountMainTab();
+                } else if (this.dialog) {
+                    this.openDialog();
+                }
             }
         }
 

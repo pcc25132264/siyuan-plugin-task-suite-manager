@@ -32,15 +32,17 @@
     ];
 
     const TAB_OPTIONS = [
-        { value: "list", label: "清单" },
-        { value: "kanban", label: "看板" },
-        { value: "calendar", label: "日历" },
-        { value: "gantt", label: "甘特图" },
-        { value: "timeline", label: "时间轴" }
+        { value: "list", label: "清单", icon: "☰" },
+        { value: "kanban", label: "看板", icon: "▦" },
+        { value: "calendar", label: "日历", icon: "📅" },
+        { value: "gantt", label: "甘特图", icon: "📊" },
+        { value: "timeline", label: "时间轴", icon: "🕘" }
     ];
 
     class SiYuanTaskSuitePlugin extends Plugin {
         async onload() {
+            const os = window?.siyuan?.config?.system?.os;
+            this.isMobile = os === "ios" || os === "android" || !!document.getElementById("sidebar");
             this.dataFile = "task-suite-state.json";
             this.state = this.createDefaultState();
             this.ui = {
@@ -74,13 +76,42 @@
                 icon: "iconList",
                 title: "任务管理中心",
                 position: "right",
-                callback: () => this.openMainTab()
+                callback: () => this.openPreferredEntry()
             });
+            if (this.isMobile) {
+                this.addDock({
+                    config: {
+                        position: "RightTop",
+                        size: {
+                            width: 400,
+                            height: 600
+                        },
+                        icon: "iconList",
+                        title: "任务管理中心",
+                        show: true
+                    },
+                    data: {},
+                    type: "mobile-entry",
+                    init: (custom) => {
+                        this.tabElement = custom.element;
+                        this.mountMainTab();
+                    },
+                    update: () => {
+                        if (this.tabElement) {
+                            this.mountMainTab();
+                        }
+                    },
+                    destroy: () => {
+                        this.tabElement = null;
+                        this.root = null;
+                    }
+                });
+            }
             this.addCommand({
                 langKey: "openTaskSuite",
                 langText: "打开任务管理中心",
                 hotkey: "⌥⌘T",
-                callback: () => this.openMainTab()
+                callback: () => this.openPreferredEntry()
             });
         }
 
@@ -236,7 +267,23 @@
             await this.saveData(this.dataFile, this.state);
         }
 
+        openSetting() {
+            if (this.isMobile) {
+                this.openPreferredEntry();
+                return;
+            }
+            super.openSetting();
+        }
+
+        openPreferredEntry() {
+            this.openMainTab();
+        }
+
         openMainTab() {
+            if (this.isMobile) {
+                this.openMobileSidebarPanel();
+                return;
+            }
             const canOpenTab = typeof siyuan.openTab === "function" && this.app;
             if (!canOpenTab) {
                 this.openDialog();
@@ -257,6 +304,36 @@
             } catch (error) {
                 this.openDialog();
             }
+        }
+
+        openMobileSidebarPanel() {
+            const sidebarElement = document.getElementById("sidebar");
+            const pluginPanelElement = sidebarElement?.querySelector('[data-type="sidebar-plugin"]');
+            if (!sidebarElement || !pluginPanelElement) {
+                return;
+            }
+            const toolbarElement = sidebarElement.querySelector(".toolbar--border");
+            const pluginTabIcon = toolbarElement?.querySelector('svg[data-type="sidebar-plugin-tab"]');
+            if (toolbarElement) {
+                toolbarElement.querySelectorAll(".toolbar__icon").forEach((item) => {
+                    item.classList.remove("toolbar__icon--active");
+                });
+            }
+            if (pluginTabIcon) {
+                pluginTabIcon.classList.add("toolbar__icon--active");
+            }
+            const panelContainer = sidebarElement.lastElementChild;
+            if (panelContainer) {
+                Array.from(panelContainer.children).forEach((item) => {
+                    if (item.getAttribute("data-type")) {
+                        item.classList.add("fn__none");
+                    }
+                });
+            }
+            pluginPanelElement.classList.remove("fn__none");
+            sidebarElement.style.transform = "translateX(0px)";
+            this.tabElement = pluginPanelElement;
+            this.mountMainTab();
         }
 
         openDialog() {
@@ -287,7 +364,7 @@
         renderDialogShell() {
             const themeMode = this.normalizeThemeMode(this.state.settings.themeMode);
             return `
-                <div class="task-suite-root task-suite-theme-${themeMode}">
+                <div class="task-suite-root task-suite-theme-${themeMode}${this.isMobile ? " task-suite-mobile" : ""}">
                     <style>
                         .task-suite-root {
                             --task-suite-bg: #ffffff;
@@ -345,11 +422,12 @@
                         }
                         .task-suite-toolbar {
                             display: flex;
-                            flex-wrap: wrap;
+                            flex-wrap: nowrap;
                             gap: 6px;
                             align-items: center;
                             justify-content: space-between;
                             padding: 0 0 6px;
+                            min-width: 0;
                         }
                         .task-suite-tabs.layout-tab-bar {
                             border-bottom: 1px solid var(--task-suite-border);
@@ -357,10 +435,49 @@
                             padding: 0 6px;
                             flex: 1;
                             background: var(--task-suite-panel-tint);
+                            min-width: 0;
+                            display: flex;
+                            flex-wrap: nowrap;
+                            overflow-x: auto;
+                            overflow-y: hidden;
                         }
                         .task-suite-tabs .item {
                             min-height: 34px;
                             color: var(--task-suite-text-soft);
+                        }
+                        .task-suite-tabs .task-suite-tab {
+                            flex: 0 0 auto;
+                            min-width: 88px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            gap: 4px;
+                            padding: 0 8px;
+                        }
+                        .task-suite-tab-icon {
+                            font-size: 13px;
+                            line-height: 1;
+                        }
+                        .task-suite-tab-label {
+                            white-space: nowrap;
+                        }
+                        .task-suite-toolbar-actions {
+                            display: flex;
+                            gap: 6px;
+                            align-items: center;
+                            flex: 0 0 auto;
+                        }
+                        .task-suite-toolbar-icon-btn {
+                            min-width: 30px;
+                            width: 30px;
+                            height: 30px;
+                            padding: 0;
+                            border-radius: 6px;
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            line-height: 1;
+                            font-size: 14px;
                         }
                         .task-suite-tab.item--focus {
                             color: var(--task-suite-header-text);
@@ -381,6 +498,24 @@
                             align-items: center;
                             gap: 10px;
                             flex-wrap: wrap;
+                        }
+                        .task-suite-task-actions {
+                            display: flex;
+                            gap: 6px;
+                            align-items: center;
+                            flex-wrap: wrap;
+                        }
+                        .task-suite-icon-btn {
+                            min-width: 28px;
+                            width: 28px;
+                            height: 28px;
+                            padding: 0;
+                            border-radius: 6px;
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 14px;
+                            line-height: 1;
                         }
                         .task-suite-grid {
                             display: grid;
@@ -759,9 +894,17 @@
                         .task-suite-editor-shell {
                             padding: 8px;
                             background: var(--task-suite-bg);
+                            height: 100%;
+                            box-sizing: border-box;
+                            overflow-x: hidden;
+                            overflow-y: auto;
                         }
                         .task-suite-editor-card {
                             background: var(--task-suite-surface);
+                        }
+                        .task-suite-editor-grid {
+                            grid-template-columns: 1fr;
+                            gap: 10px;
                         }
                         .task-suite-editor-actions {
                             justify-content: flex-end;
@@ -1078,12 +1221,12 @@
                                 grid-template-columns: 1fr;
                             }
                             .task-suite-toolbar {
-                                flex-direction: column;
-                                align-items: stretch;
+                                flex-direction: row;
+                                align-items: center;
                             }
                             .task-suite-tabs.layout-tab-bar {
                                 overflow: auto;
-                                width: 100%;
+                                width: auto;
                             }
                             .task-suite-content {
                                 padding: 10px;
@@ -1103,13 +1246,44 @@
                             .task-suite-calendar-day {
                                 min-height: 96px;
                             }
+                            .task-suite-root.task-suite-mobile .task-suite-toolbar {
+                                padding: 8px;
+                                gap: 6px;
+                                flex-wrap: nowrap;
+                            }
+                            .task-suite-root.task-suite-mobile .task-suite-toolbar .task-suite-toolbar-actions {
+                                gap: 4px;
+                            }
+                            .task-suite-root.task-suite-mobile .task-suite-toolbar .task-suite-toolbar-icon-btn {
+                                min-width: 26px;
+                                width: 26px;
+                                height: 26px;
+                                font-size: 12px;
+                            }
+                            .task-suite-root.task-suite-mobile .task-suite-tabs .task-suite-tab {
+                                min-width: 42px;
+                                flex: 1 0 auto;
+                                padding: 0 4px;
+                            }
+                            .task-suite-root.task-suite-mobile .task-suite-tab-label {
+                                display: none;
+                            }
+                            .task-suite-root.task-suite-mobile .task-suite-content {
+                                padding: 8px;
+                            }
+                            .task-suite-root.task-suite-mobile .task-suite-card {
+                                padding: 10px;
+                            }
+                            .task-suite-root.task-suite-mobile .task-suite-calendar-add-btn {
+                                display: none;
+                            }
                         }
                     </style>
                     <div class="task-suite-toolbar">
                         <div class="layout-tab-bar fn__flex task-suite-tabs" data-role="tabs"></div>
-                        <div class="fn__flex" style="gap: 8px;">
-                            <button class="b3-button b3-button--outline" data-action="toggle-theme">${themeMode === "dark" ? "浅色主题" : "暗黑主题"}</button>
-                            <button class="b3-button b3-button--outline" data-action="run-self-test">运行自测</button>
+                        <div class="task-suite-toolbar-actions">
+                            <button class="b3-button b3-button--outline task-suite-toolbar-icon-btn" data-action="toggle-theme" title="${themeMode === "dark" ? "切换浅色主题" : "切换暗黑主题"}">${themeMode === "dark" ? "☀" : "🌙"}</button>
+                            <button class="b3-button b3-button--outline task-suite-toolbar-icon-btn" data-action="run-self-test" title="运行自测">🧪</button>
                         </div>
                     </div>
                     <div class="task-suite-content" data-role="content"></div>
@@ -1377,10 +1551,10 @@
             tabHost.innerHTML = TAB_OPTIONS.map((tab) => `
                 <div class="item item--full task-suite-tab ${tab.value === this.ui.activeTab ? "item--focus" : ""}"
                     data-action="switch-tab"
+                    title="${tab.label}"
                     data-tab="${tab.value}">
-                    <span class="fn__flex-1"></span>
-                    <span class="item__text">${tab.label}</span>
-                    <span class="fn__flex-1"></span>
+                    <span class="task-suite-tab-icon">${tab.icon || "•"}</span>
+                    <span class="item__text task-suite-tab-label">${tab.label}</span>
                 </div>
             `).join("");
             let html = "";
@@ -1442,10 +1616,10 @@
                                 <span>进度: ${task.progress}%</span>
                             </div>
                         </div>
-                        <div class="fn__flex" style="gap: 6px;">
-                            <button class="b3-button b3-button--outline" data-action="quick-status" data-task-id="${task.id}">流转状态</button>
-                            <button class="b3-button b3-button--outline" data-action="open-edit-task" data-task-id="${task.id}">编辑</button>
-                            <button class="b3-button b3-button--error" data-action="delete-task" data-task-id="${task.id}">删除</button>
+                        <div class="task-suite-task-actions">
+                            <button class="b3-button b3-button--outline task-suite-icon-btn" data-action="quick-status" data-task-id="${task.id}" title="流转状态">↻</button>
+                            <button class="b3-button b3-button--outline task-suite-icon-btn" data-action="open-edit-task" data-task-id="${task.id}" title="编辑">✎</button>
+                            <button class="b3-button b3-button--error task-suite-icon-btn" data-action="delete-task" data-task-id="${task.id}" title="删除">🗑</button>
                         </div>
                     </div>
                     <div style="margin-top: 6px;">${this.escapeHtml(task.description || "暂无描述")}</div>
@@ -1858,67 +2032,67 @@
                     <div class="task-suite-root task-suite-theme-${this.normalizeThemeMode(this.state.settings.themeMode)} task-suite-editor-shell">
                         <form data-form="task-editor-dialog" class="task-suite-card task-suite-editor-card">
                             <input type="hidden" name="taskId" value="${task.id}">
-                            <div class="task-suite-grid">
-                                <div class="task-suite-field" style="grid-column: span 6;">
+                            <div class="task-suite-grid task-suite-editor-grid">
+                                <div class="task-suite-field">
                                     <label>标题</label>
                                     <input class="b3-text-field fn__block" name="title" required value="${this.escapeHtml(task.title)}">
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 3;">
+                                <div class="task-suite-field">
                                     <label>状态</label>
                                     <select class="b3-select fn__block" name="status">
                                         ${STATUS_OPTIONS.map((item) => `<option value="${item.value}" ${item.value === task.status ? "selected" : ""}>${item.label}</option>`).join("")}
                                     </select>
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 3;">
+                                <div class="task-suite-field">
                                     <label>优先级</label>
                                     <select class="b3-select fn__block" name="priority">
                                         ${PRIORITY_OPTIONS.map((item) => `<option value="${item.value}" ${item.value === task.priority ? "selected" : ""}>${item.label}</option>`).join("")}
                                     </select>
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 3;">
+                                <div class="task-suite-field">
                                     <label>计划开始时间</label>
                                     <input class="b3-text-field fn__block" type="datetime-local" name="startDate" value="${this.escapeHtml(this.formatDateTimeLocal(task.startDate))}">
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 3;">
+                                <div class="task-suite-field">
                                     <label>计划截止时间</label>
                                     <input class="b3-text-field fn__block" type="datetime-local" name="dueDate" value="${this.escapeHtml(this.formatDateTimeLocal(task.dueDate))}">
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 3;">
+                                <div class="task-suite-field">
                                     <label>实际完成时间</label>
                                     <input class="b3-text-field fn__block" type="datetime-local" name="endDate" value="${this.escapeHtml(this.formatDateTimeLocal(task.endDate))}">
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 3;">
+                                <div class="task-suite-field">
                                     <label>提醒时间</label>
                                     <input class="b3-text-field fn__block" type="datetime-local" name="reminderTime" value="${this.escapeHtml(this.formatDateTimeLocal(task.reminderTime))}">
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 3;">
+                                <div class="task-suite-field">
                                     <label>重复规则</label>
                                     <select class="b3-select fn__block" name="repeat">
                                         ${REPEAT_OPTIONS.map((item) => `<option value="${item.value}" ${item.value === task.repeat ? "selected" : ""}>${item.label}</option>`).join("")}
                                     </select>
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 3;">
+                                <div class="task-suite-field">
                                     <label>进度(%)</label>
                                     <div class="task-suite-progress-slider-row">
                                         <input class="b3-slider fn__flex-1" name="progress" type="range" min="0" max="100" value="${Number(task.progress || 0)}">
                                         <span class="task-suite-progress-value" data-role="progress-value">${Number(task.progress || 0)}%</span>
                                     </div>
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 3;">
+                                <div class="task-suite-field">
                                     <label>负责人/资源</label>
                                     <input class="b3-text-field fn__block" name="resource" value="${this.escapeHtml(task.resource || "")}">
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 6;">
+                                <div class="task-suite-field">
                                     <label>标签（逗号分隔）</label>
                                     <input class="b3-text-field fn__block" name="tags" value="${this.escapeHtml((task.tags || []).join(", "))}">
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 6;">
+                                <div class="task-suite-field">
                                     <label>依赖任务（可多选）</label>
                                     <div class="task-suite-dependency-picker">
                                         ${allDependencies || `<span class="task-suite-meta">暂无可依赖任务</span>`}
                                     </div>
                                 </div>
-                                <div class="task-suite-field" style="grid-column: span 12;">
+                                <div class="task-suite-field">
                                     <label>描述</label>
                                     <textarea class="b3-text-field fn__block" name="description" rows="4">${this.escapeHtml(task.description || "")}</textarea>
                                 </div>
@@ -1932,6 +2106,13 @@
                 `
             });
             const dialogElement = this.taskEditorDialog.element;
+            const editorShell = dialogElement.querySelector(".task-suite-editor-shell");
+            if (editorShell) {
+                editorShell.style.height = "100%";
+                editorShell.style.overflowY = "auto";
+                editorShell.style.overflowX = "hidden";
+                editorShell.style.boxSizing = "border-box";
+            }
             const form = dialogElement.querySelector("form[data-form='task-editor-dialog']");
             const cancelButton = dialogElement.querySelector("[data-action='cancel-task-editor']");
             if (cancelButton) {

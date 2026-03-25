@@ -5,6 +5,22 @@ A multi-view task management plugin for SiYuan.
 
 ---
 
+## 更新记录 / Changelog
+
+### v1.0.2
+
+- 移动端顶部 Tab、工具栏与清单操作按钮改为更紧凑的图标交互，并保持单行可横向滚动。
+- 修复移动端插件列表进入后仍需二次点击的问题，支持直接进入插件主界面。
+- 优化任务新增/编辑弹窗为单列布局，并补充弹窗纵向滚动，避免字段显示不全。
+- 调整移动端日历月视图，隐藏日期格中的“+”快捷添加按钮以缓解拥挤。
+
+### v1.0.2
+
+- Mobile top tabs, toolbar actions, and list action buttons are switched to compact icon interactions with single-line horizontal scrolling.
+- Fixed the mobile plugin-entry flow that previously required a second click, now entering the plugin directly.
+- Optimized the task create/edit dialog to a single-column layout and added vertical scrolling to avoid truncated fields.
+- Adjusted mobile calendar month cells by hiding the “+” quick-add button to reduce visual crowding.
+
 ## 中文说明
 
 ### 功能概览

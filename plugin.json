@@ -1,0 +1,28 @@
+{
+  "name": "siyuan-plugin-task-suite-manager",
+  "author": "Trae",
+  "url": "https://github.com/trae/siyuan-plugin-task-suite-manager",
+  "version": "1.0.0",
+  "minAppVersion": "3.0.0",
+  "backends": ["all"],
+  "frontends": ["all"],
+  "displayName": {
+    "default": "Task Suite Manager",
+    "zh_CN": "任务管理中心"
+  },
+  "description": {
+    "default": "A full-featured task suite for list, timeline, kanban, calendar and gantt management.",
+    "zh_CN": "一个功能完善的任务套件，支持清单、时间轴、看板、日历与甘特图管理。"
+  },
+  "readme": {
+    "default": "README.md"
+  },
+  "funding": {
+    "openCollective": "",
+    "patreon": "",
+    "github": "",
+    "custom": []
+  },
+  "keywords": ["task", "todo", "timeline", "kanban", "calendar", "gantt"],
+  "icon": "iconList"
+}

@@ -2,7 +2,7 @@
   "name": "siyuan-plugin-task-suite-manager",
   "author": "pcc25132264",
   "url": "https://github.com/pcc25132264/siyuan-plugin-task-suite-manager",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "minAppVersion": "3.0.0",
   "backends": ["all"],
   "frontends": ["all"],
@@ -15,7 +15,8 @@
     "zh_CN": "一个功能完善的任务套件，支持清单、时间轴、看板、日历与甘特图管理。"
   },
   "readme": {
-    "default": "README.md"
+    "default": "README.md",
+    "zh_CN": "README_zh_CN.md"
   },
   "funding": {
     "openCollective": "",

@@ -124,6 +124,10 @@
                 this.taskEditorDialog.destroy();
                 this.taskEditorDialog = null;
             }
+            if (this.occurrenceEditorDialog) {
+                this.occurrenceEditorDialog.destroy();
+                this.occurrenceEditorDialog = null;
+            }
             if (this.dragFeedbackTimer) {
                 clearTimeout(this.dragFeedbackTimer);
                 this.dragFeedbackTimer = null;
@@ -141,6 +145,7 @@
                 tasks: [],
                 history: [],
                 occurrenceStatuses: {},
+                occurrenceNotes: {},
                 reminderFired: {},
                 settings: {
                     calendarMonthHeight: 70,
@@ -178,6 +183,9 @@
             }
             if (!this.state.occurrenceStatuses || typeof this.state.occurrenceStatuses !== "object") {
                 this.state.occurrenceStatuses = {};
+            }
+            if (!this.state.occurrenceNotes || typeof this.state.occurrenceNotes !== "object") {
+                this.state.occurrenceNotes = {};
             }
             if (!this.state.reminderFired || typeof this.state.reminderFired !== "object") {
                 this.state.reminderFired = {};
@@ -540,6 +548,29 @@
                         .task-suite-task-card {
                             background: color-mix(in srgb, var(--task-suite-surface) 82%, var(--task-suite-panel-tint));
                             box-shadow: inset 0 1px 0 color-mix(in srgb, var(--task-suite-line) 45%, transparent);
+                        }
+                        .task-suite-repeat-summary {
+                            margin-top: 8px;
+                            padding: 6px 8px;
+                            border-radius: 6px;
+                            background: color-mix(in srgb, var(--b3-theme-primary-lighter) 26%, var(--task-suite-form-bg));
+                            border: 1px solid color-mix(in srgb, var(--b3-theme-primary-lighter) 50%, var(--task-suite-border));
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            flex-wrap: wrap;
+                            font-size: 12px;
+                            color: var(--task-suite-text-soft);
+                        }
+                        .task-suite-repeat-badge {
+                            display: inline-flex;
+                            align-items: center;
+                            border-radius: 999px;
+                            padding: 1px 8px;
+                            background: var(--b3-theme-primary-lighter);
+                            color: var(--b3-theme-primary);
+                            font-weight: 600;
+                            white-space: nowrap;
                         }
                         .task-suite-list {
                             display: flex;
@@ -929,21 +960,18 @@
                             color: var(--task-suite-item-text);
                             padding: 2px 6px;
                             border-radius: 4px;
+                            cursor: pointer;
                         }
                         .task-suite-calendar-task.status-todo {
-                            border-left-color: var(--b3-theme-primary);
                             background: color-mix(in srgb, var(--b3-theme-primary-lighter) 48%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task.status-in-progress {
-                            border-left-color: var(--b3-card-info-color);
-                            background: color-mix(in srgb, var(--b3-card-info-background) 58%, var(--task-suite-item-bg));
+                            background: color-mix(in srgb, var(--b3-card-warning-background) 70%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task.status-done {
-                            border-left-color: var(--b3-card-success-color);
                             background: color-mix(in srgb, var(--b3-card-success-background) 58%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task.status-blocked {
-                            border-left-color: var(--b3-card-error-color);
                             background: color-mix(in srgb, var(--b3-card-error-background) 62%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task-line {
@@ -952,6 +980,9 @@
                             gap: 4px;
                             min-width: 0;
                         }
+                        .task-suite-calendar-task-line .task-suite-calendar-note-badge {
+                            flex-shrink: 0;
+                        }
                         .task-suite-calendar-task-text {
                             flex: 1;
                             min-width: 0;
@@ -959,20 +990,30 @@
                             overflow: hidden;
                             text-overflow: ellipsis;
                         }
+                        .task-suite-calendar-note-badge {
+                            min-height: 16px;
+                            padding: 0 5px;
+                            border-radius: 999px;
+                            font-size: 10px;
+                            line-height: 16px;
+                            color: var(--task-suite-text-soft);
+                            background: color-mix(in srgb, var(--task-suite-chip-bg) 65%, var(--task-suite-surface));
+                            white-space: nowrap;
+                        }
                         .task-suite-calendar-grid--month .task-suite-calendar-task {
                             padding: 1px 4px;
                         }
                         .task-suite-calendar-task.priority-low {
-                            border-right-color: color-mix(in srgb, var(--b3-card-info-color) 80%, var(--task-suite-line));
+                            border-left-color: color-mix(in srgb, var(--b3-card-info-color) 88%, var(--task-suite-line));
                         }
                         .task-suite-calendar-task.priority-medium {
-                            border-right-color: color-mix(in srgb, var(--task-suite-chip-text) 72%, var(--task-suite-line));
+                            border-left-color: color-mix(in srgb, var(--task-suite-chip-text) 72%, var(--task-suite-line));
                         }
                         .task-suite-calendar-task.priority-high {
-                            border-right-color: color-mix(in srgb, var(--b3-card-warning-color) 88%, var(--task-suite-line));
+                            border-left-color: color-mix(in srgb, var(--b3-card-warning-color) 92%, var(--task-suite-line));
                         }
                         .task-suite-calendar-task.priority-urgent {
-                            border-right-color: color-mix(in srgb, var(--b3-card-error-color) 88%, var(--task-suite-line));
+                            border-left-color: color-mix(in srgb, var(--b3-card-error-color) 92%, var(--task-suite-line));
                         }
                         .task-suite-task-time {
                             font-size: 11px;
@@ -1004,16 +1045,64 @@
                         .task-suite-day-hour-content {
                             padding: 4px 8px;
                             display: flex;
-                            flex-wrap: wrap;
-                            gap: 6px;
-                            align-items: center;
+                            flex-direction: column;
+                            gap: 4px;
+                            align-items: stretch;
                         }
                         .task-suite-day-event {
                             font-size: 12px;
-                            padding: 2px 8px;
-                            border-radius: 999px;
+                            padding: 2px 6px;
+                            border-radius: 6px;
                             background: var(--b3-theme-background);
                             border: 1px solid var(--b3-border-color);
+                            border-left: 4px solid var(--task-suite-line);
+                            display: flex;
+                            align-items: center;
+                            gap: 6px;
+                            min-width: 0;
+                            cursor: pointer;
+                        }
+                        .task-suite-day-event.status-todo {
+                            background: color-mix(in srgb, var(--b3-theme-primary-lighter) 42%, var(--b3-theme-background));
+                        }
+                        .task-suite-day-event.status-in-progress {
+                            background: color-mix(in srgb, var(--b3-card-warning-background) 72%, var(--b3-theme-background));
+                        }
+                        .task-suite-day-event.status-done {
+                            background: color-mix(in srgb, var(--b3-card-success-background) 62%, var(--b3-theme-background));
+                        }
+                        .task-suite-day-event.status-blocked {
+                            background: color-mix(in srgb, var(--b3-card-error-background) 62%, var(--b3-theme-background));
+                        }
+                        .task-suite-day-event.priority-low {
+                            border-left-color: color-mix(in srgb, var(--b3-card-info-color) 88%, var(--task-suite-line));
+                        }
+                        .task-suite-day-event.priority-medium {
+                            border-left-color: color-mix(in srgb, var(--task-suite-chip-text) 72%, var(--task-suite-line));
+                        }
+                        .task-suite-day-event.priority-high {
+                            border-left-color: color-mix(in srgb, var(--b3-card-warning-color) 92%, var(--task-suite-line));
+                        }
+                        .task-suite-day-event.priority-urgent {
+                            border-left-color: color-mix(in srgb, var(--b3-card-error-color) 92%, var(--task-suite-line));
+                        }
+                        .task-suite-day-event-title {
+                            min-width: 0;
+                            flex: 1;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                        }
+                        .task-suite-calendar-repeat-badge {
+                            min-height: 16px;
+                            padding: 0 5px;
+                            border-radius: 999px;
+                            font-size: 10px;
+                            line-height: 16px;
+                            color: var(--b3-theme-primary);
+                            background: color-mix(in srgb, var(--b3-theme-primary-lighter) 58%, var(--task-suite-surface));
+                            white-space: nowrap;
+                            flex-shrink: 0;
                         }
                         .task-suite-calendar-task-head {
                             display: flex;
@@ -1040,8 +1129,8 @@
                             color: var(--b3-theme-primary);
                         }
                         .task-suite-calendar-status.status-in-progress {
-                            background: color-mix(in srgb, var(--b3-card-info-background) 65%, var(--b3-theme-background));
-                            color: var(--b3-card-info-color);
+                            background: color-mix(in srgb, var(--b3-card-warning-background) 75%, var(--b3-theme-background));
+                            color: color-mix(in srgb, var(--b3-card-warning-color) 90%, #5c4300);
                         }
                         .task-suite-calendar-status.status-done {
                             background: color-mix(in srgb, var(--b3-card-success-background) 65%, var(--b3-theme-background));
@@ -1111,6 +1200,26 @@
                             padding: 6px 10px;
                             background: var(--task-suite-surface);
                             border-radius: 6px;
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            min-width: 0;
+                        }
+                        .task-suite-timeline-time {
+                            color: var(--task-suite-text-soft);
+                            white-space: nowrap;
+                            flex-shrink: 0;
+                        }
+                        .task-suite-timeline-title {
+                            flex-shrink: 0;
+                            white-space: nowrap;
+                        }
+                        .task-suite-timeline-content {
+                            min-width: 0;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                            color: var(--task-suite-text-soft);
                         }
                         .task-suite-gantt {
                             display: flex;
@@ -1336,6 +1445,12 @@
             }
             if (action === "open-edit-task") {
                 this.openTaskEditorDialog(target.dataset.taskId || "");
+                return;
+            }
+            if (action === "open-calendar-task-editor") {
+                const taskId = target.dataset.taskId || "";
+                const date = target.dataset.date || "";
+                this.openCalendarOccurrenceEditor(taskId, date);
                 return;
             }
             if (action === "delete-task") {
@@ -1619,6 +1734,8 @@
                 .map((id) => this.findTask(id))
                 .filter(Boolean)
                 .map((item) => item.title);
+            const repeatTime = this.getTaskRepeatTimeLabel(task);
+            const occurrenceNoteCount = this.getTaskOccurrenceNoteCount(task.id);
             return `
                 <div class="task-suite-card task-suite-task-card">
                     <div class="fn__flex" style="justify-content: space-between; gap: 8px; align-items: center;">
@@ -1652,6 +1769,13 @@
                     ${dependencyTitles.length ? `
                         <div class="task-suite-meta" style="margin-top: 6px;">
                             依赖: ${dependencyTitles.map((title) => this.escapeHtml(title)).join("，")}
+                        </div>
+                    ` : ""}
+                    ${task.repeat !== "none" ? `
+                        <div class="task-suite-repeat-summary">
+                            <span class="task-suite-repeat-badge">${this.getRepeatLabel(task.repeat)}</span>
+                            <span>日历按开始时间 ${repeatTime} 展示</span>
+                            <span>实例备注 ${occurrenceNoteCount} 条</span>
                         </div>
                     ` : ""}
                     <div class="task-suite-subtasks">
@@ -1696,11 +1820,9 @@
                         <div class="task-suite-timeline">
                             ${filtered.length ? filtered.map((item) => `
                                 <div class="task-suite-timeline-item">
-                                    <div class="fn__flex" style="justify-content: space-between; gap: 8px;">
-                                        <strong>${this.escapeHtml(item.title)}</strong>
-                                        <span class="task-suite-meta">${new Date(item.time).toLocaleString()}</span>
-                                    </div>
-                                    <div style="margin-top: 4px;">${this.escapeHtml(item.content)}</div>
+                                    <span class="task-suite-timeline-time">${new Date(item.time).toLocaleString()}</span>
+                                    <strong class="task-suite-timeline-title">${this.escapeHtml(item.title)}</strong>
+                                    <span class="task-suite-timeline-content">${this.escapeHtml(item.content)}</span>
                                 </div>
                             `).join("") : `<div class="b3-label">当前筛选范围内暂无时间轴记录。</div>`}
                         </div>
@@ -1869,28 +1991,39 @@
                                             <button class="b3-button b3-button--outline task-suite-calendar-add-btn" data-action="new-task-on-date" data-date="${day.date}">+</button>
                                         </div>
                                         <div class="task-suite-calendar-day-tasks">
-                                            ${renderTasks.map((item) => mode === "month" ? `
-                                                <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${this.getStatusClass(this.getOccurrenceStatus(item.task, day.date))}">
-                                                    <div class="task-suite-calendar-task-line">
-                                                        <div class="task-suite-calendar-task-text">
+                                            ${renderTasks.map((item) => {
+                                                const occurrenceStatus = this.getOccurrenceStatus(item.task, day.date);
+                                                const statusClass = this.getStatusClass(occurrenceStatus);
+                                                const note = this.getOccurrenceNote(item.task, day.date);
+                                                const noteBadge = note ? `<span class="task-suite-calendar-note-badge b3-tooltips b3-tooltips__n" aria-label="${this.escapeHtml(note)}" title="${this.escapeHtml(note)}">备注</span>` : "";
+                                                const repeatBadge = item.task.repeat !== "none" ? `<span class="task-suite-calendar-repeat-badge" title="重复规则：${this.getRepeatLabel(item.task.repeat)}">${this.getRepeatLabel(item.task.repeat)}</span>` : "";
+                                                return mode === "month" ? `
+                                                    <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
+                                                        <div class="task-suite-calendar-task-line">
+                                                            <div class="task-suite-calendar-task-text">
+                                                                ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
+                                                                ${this.escapeHtml(item.task.title)}
+                                                            </div>
+                                                            ${repeatBadge}
+                                                            ${noteBadge}
+                                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
+                                                        </div>
+                                                    </div>
+                                                ` : `
+                                                    <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
+                                                        <div class="task-suite-calendar-task-head">
+                                                            <span class="task-suite-calendar-status ${statusClass}" title="${this.getStatusLabel(occurrenceStatus)}">${this.getStatusLabel(occurrenceStatus)}</span>
+                                                            ${repeatBadge}
+                                                            ${noteBadge}
+                                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
+                                                        </div>
+                                                        <div>
                                                             ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
                                                             ${this.escapeHtml(item.task.title)}
                                                         </div>
-                                                        <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
                                                     </div>
-                                                </div>
-                                            ` : `
-                                                <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${this.getStatusClass(this.getOccurrenceStatus(item.task, day.date))}">
-                                                    <div class="task-suite-calendar-task-head">
-                                                        <span class="task-suite-calendar-status ${this.getStatusClass(this.getOccurrenceStatus(item.task, day.date))}" title="${this.getStatusLabel(this.getOccurrenceStatus(item.task, day.date))}">${this.getStatusLabel(this.getOccurrenceStatus(item.task, day.date))}</span>
-                                                        <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
-                                                    </div>
-                                                    <div>
-                                                        ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
-                                                        ${this.escapeHtml(item.task.title)}
-                                                    </div>
-                                                </div>
-                                            `).join("")}
+                                                `;
+                                            }).join("")}
                                         </div>
                                     </div>
                                 `;
@@ -2158,6 +2291,120 @@
             this.taskEditorDialog = null;
         }
 
+        openCalendarOccurrenceEditor(taskId, date) {
+            const task = this.findTask(taskId);
+            if (!task || !date) {
+                return;
+            }
+            if (task.repeat === "none") {
+                this.openTaskEditorDialog(task.id);
+                return;
+            }
+            const status = this.getOccurrenceStatus(task, date);
+            const note = this.getOccurrenceNote(task, date);
+            if (this.occurrenceEditorDialog) {
+                this.occurrenceEditorDialog.destroy();
+            }
+            this.occurrenceEditorDialog = new Dialog({
+                title: `实例编辑 · ${task.title}`,
+                width: this.isMobile ? "92vw" : "520px",
+                height: this.isMobile ? "72vh" : "440px",
+                content: `
+                    <div class="task-suite-root task-suite-theme-${this.normalizeThemeMode(this.state.settings.themeMode)} task-suite-editor-shell">
+                        <form data-form="occurrence-editor-dialog" class="task-suite-card task-suite-editor-card">
+                            <input type="hidden" name="taskId" value="${task.id}">
+                            <input type="hidden" name="date" value="${date}">
+                            <div class="task-suite-grid task-suite-editor-grid">
+                                <div class="task-suite-field">
+                                    <label>任务</label>
+                                    <div class="task-suite-meta">${this.escapeHtml(task.title)}</div>
+                                </div>
+                                <div class="task-suite-field">
+                                    <label>实例日期</label>
+                                    <div class="task-suite-meta">${date}</div>
+                                </div>
+                                <div class="task-suite-field">
+                                    <label>实例状态</label>
+                                    <select class="b3-select fn__block" name="status">
+                                        ${STATUS_OPTIONS.map((item) => `<option value="${item.value}" ${item.value === status ? "selected" : ""}>${item.label}</option>`).join("")}
+                                    </select>
+                                </div>
+                                <div class="task-suite-field">
+                                    <label>实例备注</label>
+                                    <textarea class="b3-text-field fn__block" name="note" rows="5" placeholder="该条重复任务在 ${date} 的专属备注">${this.escapeHtml(note)}</textarea>
+                                </div>
+                            </div>
+                            <div class="fn__flex task-suite-editor-actions">
+                                <button class="b3-button b3-button--outline" type="button" data-action="open-master-task-from-occurrence">编辑任务主信息</button>
+                                <button class="b3-button b3-button--outline" type="button" data-action="cancel-occurrence-editor">取消</button>
+                                <button class="b3-button b3-button--text" type="submit">保存实例</button>
+                            </div>
+                        </form>
+                    </div>
+                `
+            });
+            const dialogElement = this.occurrenceEditorDialog.element;
+            const form = dialogElement.querySelector("form[data-form='occurrence-editor-dialog']");
+            const cancelButton = dialogElement.querySelector("[data-action='cancel-occurrence-editor']");
+            const openMasterButton = dialogElement.querySelector("[data-action='open-master-task-from-occurrence']");
+            if (cancelButton) {
+                cancelButton.addEventListener("click", () => this.closeOccurrenceEditorDialog());
+            }
+            if (openMasterButton) {
+                openMasterButton.addEventListener("click", () => {
+                    this.closeOccurrenceEditorDialog();
+                    this.openTaskEditorDialog(task.id);
+                });
+            }
+            if (form) {
+                form.addEventListener("submit", (event) => {
+                    event.preventDefault();
+                    this.submitOccurrenceForm(form);
+                });
+            }
+            const originalDestroy = this.occurrenceEditorDialog.destroy.bind(this.occurrenceEditorDialog);
+            this.occurrenceEditorDialog.destroy = () => {
+                this.occurrenceEditorDialog = null;
+                originalDestroy();
+            };
+        }
+
+        closeOccurrenceEditorDialog() {
+            if (!this.occurrenceEditorDialog) {
+                return;
+            }
+            this.occurrenceEditorDialog.destroy();
+            this.occurrenceEditorDialog = null;
+        }
+
+        submitOccurrenceForm(form) {
+            const formData = new FormData(form);
+            const taskId = (formData.get("taskId") || "").toString();
+            const date = (formData.get("date") || "").toString();
+            const status = this.normalizeStatus((formData.get("status") || "").toString());
+            const note = (formData.get("note") || "").toString().trim();
+            const task = this.findTask(taskId);
+            if (!task || !date) {
+                this.closeOccurrenceEditorDialog();
+                return;
+            }
+            const statusKey = this.getOccurrenceKey(task.id, date);
+            if (status === this.normalizeStatus(task.status)) {
+                delete this.state.occurrenceStatuses[statusKey];
+            } else {
+                this.state.occurrenceStatuses[statusKey] = status;
+            }
+            if (note) {
+                this.state.occurrenceNotes[statusKey] = note;
+            } else {
+                delete this.state.occurrenceNotes[statusKey];
+            }
+            task.updatedAt = new Date().toISOString();
+            this.pushHistory(task.id, "实例编辑", `${date} 的任务实例已更新`);
+            this.commitAndRender();
+            this.closeOccurrenceEditorDialog();
+        }
+
         submitTaskForm(form) {
             const formData = new FormData(form);
             const taskId = (formData.get("taskId") || "").toString();
@@ -2334,8 +2581,9 @@
                 if (task.repeat !== "none") {
                     const future = this.getTaskOccurrences(task, this.shiftDateString(this.formatDate(new Date()), -1), this.shiftDateString(this.formatDate(new Date()), 60));
                     future.slice(0, 8).forEach((date) => {
+                        const dateTime = this.getCalendarTaskDateTime(task, date);
                         entries.push({
-                            time: new Date(`${date}T00:00:00`).toISOString(),
+                            time: dateTime ? dateTime.toISOString() : new Date(`${date}T00:00:00`).toISOString(),
                             title: `重复计划 · ${task.title}`,
                             content: `${this.getRepeatLabel(task.repeat)}任务将在 ${date} 触发`,
                             sortWeight: 3
@@ -2425,17 +2673,7 @@
         getOccurrencesForRange(startDateString, endDateString) {
             const result = [];
             this.state.tasks.forEach((task) => {
-                const spanDates = this.getTaskSpanDates(task, startDateString, endDateString);
-                if (spanDates.length) {
-                    spanDates.forEach((date) => {
-                        result.push({
-                            date,
-                            task
-                        });
-                    });
-                    return;
-                }
-                const dates = this.getTaskOccurrences(task, startDateString, endDateString);
+                const dates = this.getTaskCalendarDates(task, startDateString, endDateString);
                 dates.forEach((date) => {
                     result.push({
                         date,
@@ -2446,7 +2684,14 @@
             return result.sort((a, b) => a.date.localeCompare(b.date));
         }
 
+        getTaskCalendarDates(task, startDateString, endDateString) {
+            return this.getTaskOccurrences(task, startDateString, endDateString);
+        }
+
         getTaskSpanDates(task, startDateString, endDateString) {
+            if (this.normalizeRepeat(task.repeat) !== "none") {
+                return [];
+            }
             const startDateRaw = this.toDateOnly(task.startDate);
             const dueDateRaw = this.toDateOnly(task.dueDate);
             if (!startDateRaw || !dueDateRaw) {
@@ -2475,36 +2720,43 @@
         }
 
         getTaskOccurrences(task, startDateString, endDateString) {
-            const startDate = this.parseDate(startDateString);
-            const endDate = this.parseDate(endDateString);
-            const anchor = this.toDateOnly(task.dueDate) || this.toDateOnly(task.startDate) || this.formatDate(new Date(task.createdAt));
-            const anchorDate = this.parseDate(anchor);
-            if (!startDate || !endDate || !anchorDate) {
+            const rangeStart = this.parseDate(startDateString);
+            const rangeEnd = this.parseDate(endDateString);
+            const repeat = this.normalizeRepeat(task.repeat);
+            const startRaw = this.toDateOnly(task.startDate) || this.toDateOnly(task.dueDate) || this.formatDate(new Date(task.createdAt));
+            const dueRaw = this.toDateOnly(task.dueDate) || this.toDateOnly(task.startDate) || startRaw;
+            const startDate = this.parseDate(startRaw);
+            const dueDate = this.parseDate(dueRaw);
+            if (!rangeStart || !rangeEnd || !startDate || !dueDate) {
                 return [];
             }
+            const windowStart = startDate <= dueDate ? startDate : dueDate;
+            const windowEnd = startDate <= dueDate ? dueDate : startDate;
             const result = [];
-            if (task.repeat === "none") {
-                const day = this.formatDate(anchorDate);
+            if (repeat === "none") {
+                const day = this.formatDate(windowStart);
                 if (day >= startDateString && day <= endDateString) {
                     result.push(day);
                 }
                 return result;
             }
-            let current = new Date(anchorDate);
+            let current = new Date(windowStart);
             const hardLimit = 520;
             let iterations = 0;
-            while (current <= endDate && iterations < hardLimit) {
+            while (current <= windowEnd && iterations < hardLimit) {
                 iterations += 1;
                 const dateString = this.formatDate(current);
                 if (dateString >= startDateString && dateString <= endDateString) {
                     result.push(dateString);
                 }
-                if (task.repeat === "daily") {
+                if (repeat === "daily") {
                     current = this.addDays(current, 1);
-                } else if (task.repeat === "weekly") {
+                } else if (repeat === "weekly") {
                     current = this.addDays(current, 7);
-                } else if (task.repeat === "monthly") {
+                } else if (repeat === "monthly") {
                     current = new Date(current.getFullYear(), current.getMonth() + 1, current.getDate());
+                } else {
+                    break;
                 }
             }
             return result;
@@ -2745,13 +2997,9 @@
         }
 
         getCalendarTaskTimeLabel(task, day) {
-            const due = this.parseDate(task.dueDate);
-            const start = this.parseDate(task.startDate);
-            if (due && this.toDateOnly(task.dueDate) === day) {
-                return `${`${due.getHours()}`.padStart(2, "0")}:${`${due.getMinutes()}`.padStart(2, "0")}`;
-            }
-            if (start && this.toDateOnly(task.startDate) === day) {
-                return `${`${start.getHours()}`.padStart(2, "0")}:${`${start.getMinutes()}`.padStart(2, "0")}`;
+            const dateTime = this.getCalendarTaskDateTime(task, day);
+            if (dateTime) {
+                return `${`${dateTime.getHours()}`.padStart(2, "0")}:${`${dateTime.getMinutes()}`.padStart(2, "0")}`;
             }
             return "";
         }
@@ -2759,6 +3007,14 @@
         getCalendarTaskDateTime(task, day) {
             const due = this.parseDate(task.dueDate);
             const start = this.parseDate(task.startDate);
+            if (task.repeat !== "none") {
+                const base = start || due;
+                if (base) {
+                    const hh = `${base.getHours()}`.padStart(2, "0");
+                    const mm = `${base.getMinutes()}`.padStart(2, "0");
+                    return this.parseDate(`${day}T${hh}:${mm}`);
+                }
+            }
             if (due && this.toDateOnly(task.dueDate) === day) {
                 return due;
             }
@@ -2785,13 +3041,22 @@
                     <div class="task-suite-day-hour-row">
                         <div class="task-suite-day-hour-label">${`${hour}`.padStart(2, "0")}:00</div>
                         <div class="task-suite-day-hour-content">
-                            ${hourTasks.map((item) => `
-                                <span class="task-suite-day-event ${this.getPriorityClass(item.task.priority)}">
-                                    <span class="task-suite-calendar-status ${this.getStatusClass(this.getOccurrenceStatus(item.task, day))}" title="${this.getStatusLabel(this.getOccurrenceStatus(item.task, day))}">${this.getStatusLabel(this.getOccurrenceStatus(item.task, day))}</span>
-                                    ${this.getCalendarTaskTimeLabel(item.task, day) ? `${this.getCalendarTaskTimeLabel(item.task, day)} ` : ""}${this.escapeHtml(item.task.title)}
-                                    <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day}">↻</button>
-                                </span>
-                            `).join("")}
+                            ${hourTasks.map((item) => {
+                                const occurrenceStatus = this.getOccurrenceStatus(item.task, day);
+                                const statusClass = this.getStatusClass(occurrenceStatus);
+                                const note = this.getOccurrenceNote(item.task, day);
+                                const noteBadge = note ? `<span class="task-suite-calendar-note-badge b3-tooltips b3-tooltips__n" aria-label="${this.escapeHtml(note)}" title="${this.escapeHtml(note)}">备注</span>` : "";
+                                const repeatBadge = item.task.repeat !== "none" ? `<span class="task-suite-calendar-repeat-badge" title="重复规则：${this.getRepeatLabel(item.task.repeat)}">${this.getRepeatLabel(item.task.repeat)}</span>` : "";
+                                return `
+                                    <div class="task-suite-day-event ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day}">
+                                        <span class="task-suite-calendar-status ${statusClass}" title="${this.getStatusLabel(occurrenceStatus)}">${this.getStatusLabel(occurrenceStatus)}</span>
+                                        <span class="task-suite-day-event-title">${this.getCalendarTaskTimeLabel(item.task, day) ? `${this.getCalendarTaskTimeLabel(item.task, day)} ` : ""}${this.escapeHtml(item.task.title)}</span>
+                                        ${repeatBadge}
+                                        ${noteBadge}
+                                        <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day}">↻</button>
+                                    </div>
+                                `;
+                            }).join("")}
                         </div>
                     </div>
                 `);
@@ -2838,6 +3103,43 @@
             return this.normalizeStatus(task.status);
         }
 
+        getOccurrenceNote(task, date) {
+            if (!task || !task.id || !date) {
+                return "";
+            }
+            const key = this.getOccurrenceKey(task.id, date);
+            return String(this.state.occurrenceNotes[key] || "").trim();
+        }
+
+        getOccurrenceNotePreview(task, date) {
+            const note = this.getOccurrenceNote(task, date);
+            if (!note) {
+                return "";
+            }
+            if (note.length <= 16) {
+                return note;
+            }
+            return `${note.slice(0, 16)}…`;
+        }
+
+        getTaskOccurrenceNoteCount(taskId) {
+            if (!taskId) {
+                return 0;
+            }
+            const prefix = `${taskId}::`;
+            return Object.keys(this.state.occurrenceNotes).filter((key) => key.startsWith(prefix)).length;
+        }
+
+        getTaskRepeatTimeLabel(task) {
+            const start = this.parseDate(task.startDate);
+            const due = this.parseDate(task.dueDate);
+            const base = start || due;
+            if (!base) {
+                return "00:00";
+            }
+            return `${`${base.getHours()}`.padStart(2, "0")}:${`${base.getMinutes()}`.padStart(2, "0")}`;
+        }
+
         cycleCalendarOccurrenceStatus(taskId, date) {
             const task = this.findTask(taskId);
             if (!task || !date) {
@@ -2866,6 +3168,11 @@
             Object.keys(this.state.occurrenceStatuses).forEach((key) => {
                 if (key.startsWith(prefix)) {
                     delete this.state.occurrenceStatuses[key];
+                }
+            });
+            Object.keys(this.state.occurrenceNotes).forEach((key) => {
+                if (key.startsWith(prefix)) {
+                    delete this.state.occurrenceNotes[key];
                 }
             });
             Object.keys(this.state.reminderFired).forEach((key) => {
@@ -3025,6 +3332,23 @@
         }
 
         runSelfTest() {
+            const selfTestTask = {
+                id: "self-test",
+                title: "self-test",
+                repeat: "weekly",
+                dueDate: "2026-03-31T18:00",
+                startDate: "2026-03-02T09:00",
+                createdAt: "2026-03-01T00:00:00.000Z"
+            };
+            const weeklyDates = this.getTaskCalendarDates(selfTestTask, "2026-03-01", "2026-03-20");
+            const expectedWeeklyDates = ["2026-03-02", "2026-03-09", "2026-03-16"];
+            const monthlyDates = this.getTaskCalendarDates({
+                ...selfTestTask,
+                repeat: "monthly",
+                startDate: "2026-01-15T09:00",
+                dueDate: "2026-04-30T18:00"
+            }, "2026-01-01", "2026-04-30");
+            const expectedMonthlyDates = ["2026-01-15", "2026-02-15", "2026-03-15", "2026-04-15"];
             const checks = [];
             checks.push({
                 name: "任务结构",
@@ -3036,14 +3360,7 @@
             });
             checks.push({
                 name: "重复任务计算",
-                pass: this.getTaskOccurrences({
-                    id: "test",
-                    title: "test",
-                    repeat: "daily",
-                    dueDate: this.formatDate(new Date()),
-                    startDate: "",
-                    createdAt: new Date().toISOString()
-                }, this.formatDate(new Date()), this.shiftDateString(this.formatDate(new Date()), 3)).length >= 1
+                pass: expectedWeeklyDates.every((date) => weeklyDates.includes(date)) && expectedMonthlyDates.every((date) => monthlyDates.includes(date))
             });
             const failed = checks.filter((item) => !item.pass);
             if (!failed.length) {

@@ -1010,6 +1010,27 @@
                         .task-suite-calendar-grid--month .task-suite-calendar-task {
                             padding: 1px 4px;
                         }
+                        .task-suite-calendar-mobile-month-list {
+                            margin-top: 10px;
+                        }
+                        .task-suite-calendar-mobile-month-day {
+                            border: 1px solid var(--task-suite-border);
+                            border-radius: 8px;
+                            padding: 8px;
+                            background: var(--task-suite-surface);
+                        }
+                        .task-suite-calendar-mobile-month-head {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            margin-bottom: 6px;
+                            gap: 8px;
+                        }
+                        .task-suite-calendar-mobile-month-tasks {
+                            display: flex;
+                            flex-direction: column;
+                            gap: 4px;
+                        }
                         .task-suite-calendar-task.priority-low {
                             border-left-color: color-mix(in srgb, var(--b3-card-info-color) 88%, var(--task-suite-line));
                         }
@@ -1422,6 +1443,9 @@
                                 padding: 10px;
                             }
                             .task-suite-root.task-suite-mobile .task-suite-calendar-add-btn {
+                                display: none;
+                            }
+                            .task-suite-root.task-suite-mobile .task-suite-calendar-grid--month .task-suite-calendar-day-tasks {
                                 display: none;
                             }
                         }
@@ -2015,6 +2039,19 @@
                 }
                 mapByDay.get(key).push(item);
             });
+            const modeTabs = [
+                { mode: "month", label: `月 · ${cursor.getMonth() + 1}月` },
+                { mode: "week", label: `周 · 第${this.getWeekNumber(this.startOfWeek(cursor))}周` },
+                { mode: "day", label: `日 · ${cursor.getDate()}号` }
+            ];
+            const isMobileMonthView = Boolean(this.isMobile && mode === "month");
+            const modeTabsHtml = modeTabs.map((item) => `
+                                <div class="item item--full ${mode === item.mode ? "item--focus" : ""}" data-action="switch-calendar-mode" data-mode="${item.mode}">
+                                    <span class="fn__flex-1"></span>
+                                    <span class="item__text">${item.label}</span>
+                                    <span class="fn__flex-1"></span>
+                                </div>
+                            `).join("");
             if (mode === "day") {
                 const day = range.days[0];
                 const tasks = mapByDay.get(day.date) || [];
@@ -2028,17 +2065,7 @@
                                 <input class="b3-text-field" type="date" data-filter="calendar-cursor" value="${this.formatDate(cursor)}">
                             </div>
                             <div class="layout-tab-bar fn__flex task-suite-calendar-mode">
-                                ${[
-                                    { mode: "month", label: "月" },
-                                    { mode: "week", label: "周" },
-                                    { mode: "day", label: "日" }
-                                ].map((item) => `
-                                    <div class="item item--full ${mode === item.mode ? "item--focus" : ""}" data-action="switch-calendar-mode" data-mode="${item.mode}">
-                                        <span class="fn__flex-1"></span>
-                                        <span class="item__text">${item.label}</span>
-                                        <span class="fn__flex-1"></span>
-                                    </div>
-                                `).join("")}
+                                ${modeTabsHtml}
                             </div>
                             <div class="task-suite-meta">
                                 展示区间: ${range.start} 至 ${range.end}
@@ -2070,17 +2097,7 @@
                             <input class="b3-text-field" type="date" data-filter="calendar-cursor" value="${this.formatDate(cursor)}">
                         </div>
                         <div class="layout-tab-bar fn__flex task-suite-calendar-mode">
-                            ${[
-                                { mode: "month", label: "月" },
-                                { mode: "week", label: "周" },
-                                { mode: "day", label: "日" }
-                            ].map((item) => `
-                                <div class="item item--full ${mode === item.mode ? "item--focus" : ""}" data-action="switch-calendar-mode" data-mode="${item.mode}">
-                                    <span class="fn__flex-1"></span>
-                                    <span class="item__text">${item.label}</span>
-                                    <span class="fn__flex-1"></span>
-                                </div>
-                            `).join("")}
+                            ${modeTabsHtml}
                         </div>
                         <div class="task-suite-meta">
                             展示区间: ${range.start} 至 ${range.end}
@@ -2096,13 +2113,13 @@
                         <div class="task-suite-calendar-grid task-suite-calendar-grid--${mode}" style="${mode === "month" ? `--task-suite-month-height:${monthHeight}vh;` : ""}">
                             ${range.days.map((day) => {
                                 const tasks = mapByDay.get(day.date) || [];
-                                const renderTasks = tasks;
+                                const renderTasks = isMobileMonthView ? [] : tasks;
                                 return `
                                     <div class="task-suite-calendar-day ${day.dimmed ? "dimmed" : ""}">
                                         <div class="task-suite-calendar-day-head">
                                             <div class="task-suite-calendar-day-title">
                                                 <strong>${day.label}</strong>
-                                                ${mode === "month" ? `<div class="task-suite-calendar-lunar">${this.getLunarLabel(day.date)}</div>` : ""}
+                                                <div class="task-suite-calendar-lunar">${this.getLunarLabel(day.date)}</div>
                                             </div>
                                             <button class="b3-button b3-button--outline task-suite-calendar-add-btn" data-action="new-task-on-date" data-date="${day.date}">+</button>
                                         </div>
@@ -2146,6 +2163,64 @@
                             }).join("")}
                         </div>
                     </div>
+                    ${isMobileMonthView ? this.renderMobileMonthTaskList(range.days, mapByDay) : ""}
+                </div>
+            `;
+        }
+
+        renderMobileMonthTaskList(days, mapByDay) {
+            const dayBlocks = days.map((day) => {
+                if (day.dimmed) {
+                    return "";
+                }
+                const tasks = mapByDay.get(day.date) || [];
+                if (!tasks.length) {
+                    return "";
+                }
+                return `
+                    <div class="task-suite-calendar-mobile-month-day">
+                        <div class="task-suite-calendar-mobile-month-head">
+                            <div class="task-suite-calendar-day-title">
+                                <strong>${day.label}</strong>
+                                <div class="task-suite-calendar-lunar">${this.getLunarLabel(day.date)}</div>
+                            </div>
+                            <button class="b3-button b3-button--outline" data-action="new-task-on-date" data-date="${day.date}">新增</button>
+                        </div>
+                        <div class="task-suite-calendar-mobile-month-tasks">
+                            ${tasks.map((item) => {
+                                const occurrenceStatus = this.getOccurrenceStatus(item.task, day.date);
+                                const statusClass = this.getStatusClass(occurrenceStatus);
+                                const note = this.getOccurrenceNote(item.task, day.date);
+                                const noteBadge = note ? `<span class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger" tabindex="0" aria-label="${this.escapeHtml(note)}">备注</span>` : "";
+                                const repeatBadge = item.task.repeat !== "none" ? `<span class="task-suite-calendar-repeat-badge" title="重复规则：${this.getRepeatLabel(item.task.repeat)}">${this.getRepeatLabel(item.task.repeat)}</span>` : "";
+                                return `
+                                    <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
+                                        <div class="task-suite-calendar-task-line">
+                                            <div class="task-suite-calendar-task-text">
+                                                ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
+                                                ${this.escapeHtml(item.task.title)}
+                                            </div>
+                                            ${repeatBadge}
+                                            ${noteBadge}
+                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join("")}
+                        </div>
+                    </div>
+                `;
+            }).filter(Boolean).join("");
+            if (!dayBlocks) {
+                return `
+                    <div class="task-suite-card task-suite-calendar-mobile-month-list">
+                        <div class="task-suite-meta">当前月份暂无任务清单。</div>
+                    </div>
+                `;
+            }
+            return `
+                <div class="task-suite-card task-suite-calendar-mobile-month-list">
+                    <div class="task-suite-calendar-mobile-month-tasks">${dayBlocks}</div>
                 </div>
             `;
         }
@@ -2744,7 +2819,7 @@
                     const date = this.formatDate(current);
                     days.push({
                         date,
-                        label: `${current.getMonth() + 1}/${current.getDate()}`,
+                        label: `${current.getDate()}`,
                         dimmed: false
                     });
                 }
@@ -2762,7 +2837,7 @@
                 const date = this.formatDate(current);
                 days.push({
                     date,
-                    label: `${current.getMonth() + 1}/${current.getDate()}`,
+                    label: `${current.getDate()}`,
                     dimmed: current.getMonth() !== cursorDate.getMonth()
                 });
             }
@@ -3186,13 +3261,56 @@
             }
             try {
                 const raw = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", {
-                    month: "short",
                     day: "numeric"
                 }).format(date);
-                return raw.replace(/\s+/g, "");
+                const normalized = raw
+                    .replace(/\s+/g, "")
+                    .replace(/(初|闰|日)/g, "");
+                const numericMatch = normalized.match(/\d+/);
+                if (numericMatch) {
+                    return this.toChineseDayText(Number(numericMatch[0]));
+                }
+                return normalized;
             } catch (error) {
                 return "";
             }
+        }
+
+        toChineseDayText(value) {
+            const number = Number(value);
+            if (!Number.isFinite(number) || number <= 0) {
+                return "";
+            }
+            const digits = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+            if (number <= 10) {
+                return number === 10 ? "十" : digits[number];
+            }
+            if (number < 20) {
+                return `十${digits[number - 10]}`;
+            }
+            if (number < 30) {
+                return `二十${digits[number - 20]}`;
+            }
+            if (number === 30) {
+                return "三十";
+            }
+            if (number === 31) {
+                return "三十一";
+            }
+            return `${number}`;
+        }
+
+        getWeekNumber(dateValue) {
+            const date = this.parseDate(dateValue);
+            if (!date) {
+                return 1;
+            }
+            const current = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+            const day = current.getDay() || 7;
+            current.setDate(current.getDate() + 4 - day);
+            const yearStart = new Date(current.getFullYear(), 0, 1);
+            const dayIndex = Math.floor((current.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000));
+            return Math.floor(dayIndex / 7) + 1;
         }
 
         getStatusClass(status) {

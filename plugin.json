@@ -2,7 +2,7 @@
   "name": "siyuan-plugin-task-suite-manager",
   "author": "pcc25132264",
   "url": "https://github.com/pcc25132264/siyuan-plugin-task-suite-manager",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "minAppVersion": "3.0.0",
   "backends": ["all"],
   "frontends": ["all"],

@@ -101,11 +101,31 @@ function run() {
     const monthHtml = plugin.renderCalendarView();
     assert.equal(monthHtml.includes('class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger"'), true);
     assert.equal(monthHtml.includes('aria-label="测试备注提示"'), true);
+    assert.equal(monthHtml.includes("月 · 3月"), true);
+    assert.equal(monthHtml.includes("周 · 第10周"), true);
+    assert.equal(monthHtml.includes("日 · 4号"), true);
+    assert.equal(monthHtml.includes("当前月份：3月"), false);
+    assert.equal(monthHtml.includes("class=\"task-suite-calendar-lunar\""), true);
+
+    const weekRange = plugin.getCalendarRange("week", plugin.parseDate("2026-03-04"));
+    assert.equal(weekRange.days.map((item) => item.label).every((label) => /^\d+$/.test(label)), true);
+    assert.equal(weekRange.days[0].label, "2");
+
+    const lunarLabel = plugin.getLunarLabel("2026-03-04");
+    assert.equal(lunarLabel.length > 0, true);
+    assert.equal(/[0-9]/.test(lunarLabel), false);
 
     plugin.ui.calendarMode = "day";
     const dayHtml = plugin.renderCalendarView();
     assert.equal(dayHtml.includes('class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger"'), true);
     assert.equal(dayHtml.includes('aria-label="测试备注提示"'), true);
+
+    plugin.ui.calendarMode = "month";
+    plugin.isMobile = true;
+    const mobileMonthHtml = plugin.renderCalendarView();
+    assert.equal(mobileMonthHtml.includes("task-suite-calendar-mobile-month-list"), true);
+    assert.equal(mobileMonthHtml.includes("task-suite-calendar-mobile-month-day"), true);
+    assert.equal(mobileMonthHtml.includes("当前月份：3月"), false);
 
     const source = fs.readFileSync(INDEX_PATH, "utf8");
     assert.equal(source.includes(".task-suite-day-timeline {"), true);
@@ -115,8 +135,11 @@ function run() {
     assert.equal(source.includes("overflow: visible;"), true);
     assert.equal(source.includes("handleRootMouseOver(event)"), true);
     assert.equal(source.includes("getOrCreateNoteTooltip()"), true);
+    assert.equal(source.includes("renderMobileMonthTaskList(days, mapByDay)"), true);
     assert.equal(source.includes('tooltip.style.whiteSpace = "pre-wrap";'), true);
     assert.equal(source.includes('tooltip.style.overflowWrap = "anywhere";'), true);
+    assert.equal(source.includes(".task-suite-root.task-suite-mobile .task-suite-calendar-grid--month .task-suite-calendar-day-tasks {"), true);
+    assert.equal(source.includes("display: none;"), true);
 }
 
 run();

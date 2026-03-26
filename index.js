@@ -836,11 +836,20 @@
                         .task-suite-calendar-add-btn {
                             min-height: 22px;
                             height: 22px;
-                            padding: 0 6px;
+                            min-width: 22px;
+                            width: 22px;
+                            padding: 0;
                             line-height: 20px;
-                            font-size: 12px;
+                            font-size: 16px;
+                            font-weight: 700;
                             border-radius: 999px;
                             flex-shrink: 0;
+                            border: none !important;
+                            box-shadow: none !important;
+                            background: transparent !important;
+                        }
+                        .task-suite-calendar-add-btn:hover {
+                            background: color-mix(in srgb, var(--task-suite-button-bg) 45%, transparent) !important;
                         }
                         .task-suite-calendar-lunar {
                             font-size: 11px;
@@ -915,7 +924,7 @@
                         }
                         .task-suite-calendar-task {
                             font-size: 12px;
-                            border-left: 3px solid var(--b3-theme-primary);
+                            border-left: 4px solid var(--b3-theme-primary);
                             background: var(--task-suite-item-bg);
                             color: var(--task-suite-item-text);
                             padding: 2px 6px;
@@ -923,15 +932,19 @@
                         }
                         .task-suite-calendar-task.status-todo {
                             border-left-color: var(--b3-theme-primary);
+                            background: color-mix(in srgb, var(--b3-theme-primary-lighter) 48%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task.status-in-progress {
                             border-left-color: var(--b3-card-info-color);
+                            background: color-mix(in srgb, var(--b3-card-info-background) 58%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task.status-done {
                             border-left-color: var(--b3-card-success-color);
+                            background: color-mix(in srgb, var(--b3-card-success-background) 58%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task.status-blocked {
-                            border-left-color: var(--b3-card-warning-color);
+                            border-left-color: var(--b3-card-error-color);
+                            background: color-mix(in srgb, var(--b3-card-error-background) 62%, var(--task-suite-item-bg));
                         }
                         .task-suite-calendar-task-line {
                             display: flex;
@@ -950,16 +963,16 @@
                             padding: 1px 4px;
                         }
                         .task-suite-calendar-task.priority-low {
-                            background: color-mix(in srgb, var(--b3-card-info-background) 34%, var(--task-suite-item-bg));
+                            border-right-color: color-mix(in srgb, var(--b3-card-info-color) 80%, var(--task-suite-line));
                         }
                         .task-suite-calendar-task.priority-medium {
-                            background: color-mix(in srgb, var(--task-suite-chip-bg) 72%, var(--task-suite-item-bg));
+                            border-right-color: color-mix(in srgb, var(--task-suite-chip-text) 72%, var(--task-suite-line));
                         }
                         .task-suite-calendar-task.priority-high {
-                            background: color-mix(in srgb, var(--b3-card-warning-background) 40%, var(--task-suite-item-bg));
+                            border-right-color: color-mix(in srgb, var(--b3-card-warning-color) 88%, var(--task-suite-line));
                         }
                         .task-suite-calendar-task.priority-urgent {
-                            background: color-mix(in srgb, var(--b3-card-error-background) 42%, var(--task-suite-item-bg));
+                            border-right-color: color-mix(in srgb, var(--b3-card-error-color) 88%, var(--task-suite-line));
                         }
                         .task-suite-task-time {
                             font-size: 11px;
@@ -1009,13 +1022,15 @@
                             gap: 6px;
                         }
                         .task-suite-calendar-status {
-                            width: 18px;
+                            min-height: 18px;
                             height: 18px;
+                            padding: 0 6px;
                             border-radius: 999px;
                             display: inline-flex;
                             align-items: center;
                             justify-content: center;
-                            font-size: 12px;
+                            font-size: 11px;
+                            font-weight: 600;
                             color: var(--b3-theme-on-surface-light);
                             background: var(--b3-theme-background);
                             white-space: nowrap;
@@ -1033,8 +1048,8 @@
                             color: var(--b3-card-success-color);
                         }
                         .task-suite-calendar-status.status-blocked {
-                            background: color-mix(in srgb, var(--b3-card-warning-background) 65%, var(--b3-theme-background));
-                            color: var(--b3-card-warning-color);
+                            background: color-mix(in srgb, var(--b3-card-error-background) 65%, var(--b3-theme-background));
+                            color: var(--b3-card-error-color);
                         }
                         .task-suite-calendar-switch-btn {
                             min-height: 20px;
@@ -1628,7 +1643,6 @@
                         ${task.dueDate ? `<span>计划截止: ${task.dueDate}</span>` : ""}
                         ${task.endDate ? `<span>实际完成: ${task.endDate}</span>` : ""}
                         ${task.reminderTime ? `<span>提醒: ${task.reminderTime}</span>` : ""}
-                        ${task.resource ? `<span>资源: ${this.escapeHtml(task.resource)}</span>` : ""}
                     </div>
                     ${task.tags.length ? `
                         <div class="task-suite-meta" style="margin-top: 8px;">
@@ -1868,7 +1882,7 @@
                                             ` : `
                                                 <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${this.getStatusClass(this.getOccurrenceStatus(item.task, day.date))}">
                                                     <div class="task-suite-calendar-task-head">
-                                                        <span class="task-suite-calendar-status ${this.getStatusClass(this.getOccurrenceStatus(item.task, day.date))}" title="${this.getStatusLabel(this.getOccurrenceStatus(item.task, day.date))}">${this.getStatusIcon(this.getOccurrenceStatus(item.task, day.date))}</span>
+                                                        <span class="task-suite-calendar-status ${this.getStatusClass(this.getOccurrenceStatus(item.task, day.date))}" title="${this.getStatusLabel(this.getOccurrenceStatus(item.task, day.date))}">${this.getStatusLabel(this.getOccurrenceStatus(item.task, day.date))}</span>
                                                         <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
                                                     </div>
                                                     <div>
@@ -2040,7 +2054,7 @@
                                 <div class="task-suite-field">
                                     <label>状态</label>
                                     <select class="b3-select fn__block" name="status">
-                                        ${STATUS_OPTIONS.map((item) => `<option value="${item.value}" ${item.value === task.status ? "selected" : ""}>${item.label}</option>`).join("")}
+                                        ${STATUS_OPTIONS.map((item) => `<option value="${item.value}" ${item.value === task.status ? "selected" : ""}>${this.getStatusIcon(item.value)} ${item.label}</option>`).join("")}
                                     </select>
                                 </div>
                                 <div class="task-suite-field">
@@ -2077,10 +2091,6 @@
                                         <input class="b3-slider fn__flex-1" name="progress" type="range" min="0" max="100" value="${Number(task.progress || 0)}">
                                         <span class="task-suite-progress-value" data-role="progress-value">${Number(task.progress || 0)}%</span>
                                     </div>
-                                </div>
-                                <div class="task-suite-field">
-                                    <label>负责人/资源</label>
-                                    <input class="b3-text-field fn__block" name="resource" value="${this.escapeHtml(task.resource || "")}">
                                 </div>
                                 <div class="task-suite-field">
                                     <label>标签（逗号分隔）</label>
@@ -2170,7 +2180,7 @@
                 endDate: this.normalizeDateTimeInput((formData.get("endDate") || "").toString()),
                 reminderTime: this.normalizeDateTimeInput((formData.get("reminderTime") || "").toString()),
                 progress: this.normalizeProgress((formData.get("progress") || "").toString()),
-                resource: (formData.get("resource") || "").toString().trim(),
+                resource: "",
                 tags: (formData.get("tags") || "").toString().split(",").map((tag) => tag.trim()).filter(Boolean),
                 dependencies
             };
@@ -2777,7 +2787,7 @@
                         <div class="task-suite-day-hour-content">
                             ${hourTasks.map((item) => `
                                 <span class="task-suite-day-event ${this.getPriorityClass(item.task.priority)}">
-                                    <span class="task-suite-calendar-status ${this.getStatusClass(this.getOccurrenceStatus(item.task, day))}" title="${this.getStatusLabel(this.getOccurrenceStatus(item.task, day))}">${this.getStatusIcon(this.getOccurrenceStatus(item.task, day))}</span>
+                                    <span class="task-suite-calendar-status ${this.getStatusClass(this.getOccurrenceStatus(item.task, day))}" title="${this.getStatusLabel(this.getOccurrenceStatus(item.task, day))}">${this.getStatusLabel(this.getOccurrenceStatus(item.task, day))}</span>
                                     ${this.getCalendarTaskTimeLabel(item.task, day) ? `${this.getCalendarTaskTimeLabel(item.task, day)} ` : ""}${this.escapeHtml(item.task.title)}
                                     <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day}">↻</button>
                                 </span>

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const INDEX_PATH = path.join(__dirname, "index.js");
+const CSS_PATH = path.join(__dirname, "index.css");
 
 function loadPluginClass() {
     const source = fs.readFileSync(INDEX_PATH, "utf8");
@@ -101,11 +102,15 @@ function run() {
     const monthHtml = plugin.renderCalendarView();
     assert.equal(monthHtml.includes('class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger"'), true);
     assert.equal(monthHtml.includes('aria-label="测试备注提示"'), true);
+    assert.equal(monthHtml.includes("50vh"), true);
     assert.equal(monthHtml.includes("月 · 3月"), true);
     assert.equal(monthHtml.includes("周 · 第10周"), true);
     assert.equal(monthHtml.includes("日 · 4号"), true);
     assert.equal(monthHtml.includes("当前月份：3月"), false);
     assert.equal(monthHtml.includes("class=\"task-suite-calendar-lunar\""), true);
+    assert.equal(monthHtml.includes("task-suite-calendar-weekdays"), true);
+    assert.equal(monthHtml.includes("星期一"), true);
+    assert.equal(monthHtml.includes("星期日"), true);
 
     const weekRange = plugin.getCalendarRange("week", plugin.parseDate("2026-03-04"));
     assert.equal(weekRange.days.map((item) => item.label).every((label) => /^\d+$/.test(label)), true);
@@ -119,6 +124,7 @@ function run() {
     const dayHtml = plugin.renderCalendarView();
     assert.equal(dayHtml.includes('class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger"'), true);
     assert.equal(dayHtml.includes('aria-label="测试备注提示"'), true);
+    assert.equal(dayHtml.includes("星期三 · 2026-03-04"), true);
 
     plugin.ui.calendarMode = "month";
     plugin.isMobile = true;
@@ -126,20 +132,36 @@ function run() {
     assert.equal(mobileMonthHtml.includes("task-suite-calendar-mobile-month-list"), true);
     assert.equal(mobileMonthHtml.includes("task-suite-calendar-mobile-month-day"), true);
     assert.equal(mobileMonthHtml.includes("当前月份：3月"), false);
+    assert.equal(mobileMonthHtml.includes('task-suite-calendar-weekday">一<'), true);
+    assert.equal(mobileMonthHtml.includes("星期一"), false);
+
+    plugin.ui.calendarMode = "week";
+    const mobileWeekHtml = plugin.renderCalendarView();
+    assert.equal(mobileWeekHtml.includes("task-suite-calendar-weekdays"), false);
+    assert.equal(mobileWeekHtml.includes("星期一 2"), true);
 
     const source = fs.readFileSync(INDEX_PATH, "utf8");
-    assert.equal(source.includes(".task-suite-day-timeline {"), true);
-    assert.equal(source.includes(".task-suite-day-hour-row {"), true);
-    assert.equal(source.includes(".task-suite-day-event:hover"), true);
-    assert.equal(source.includes(".task-suite-day-event .task-suite-calendar-note-badge"), true);
-    assert.equal(source.includes("overflow: visible;"), true);
+    const cssSource = fs.readFileSync(CSS_PATH, "utf8");
     assert.equal(source.includes("handleRootMouseOver(event)"), true);
     assert.equal(source.includes("getOrCreateNoteTooltip()"), true);
+    assert.equal(source.includes('getWeekdayNames(mode = "full")'), true);
+    assert.equal(source.includes("getWeekdayName(dateValue)"), true);
+    assert.equal(source.includes("const options = [50, 60, 70, 80];"), true);
+    assert.equal(source.includes("showWeekdayHeader = !(this.isMobile && mode === \"week\")"), true);
     assert.equal(source.includes("renderMobileMonthTaskList(days, mapByDay)"), true);
     assert.equal(source.includes('tooltip.style.whiteSpace = "pre-wrap";'), true);
     assert.equal(source.includes('tooltip.style.overflowWrap = "anywhere";'), true);
-    assert.equal(source.includes(".task-suite-root.task-suite-mobile .task-suite-calendar-grid--month .task-suite-calendar-day-tasks {"), true);
-    assert.equal(source.includes("display: none;"), true);
+    assert.equal(source.includes("<style>"), false);
+    assert.equal(cssSource.includes(".task-suite-day-timeline {"), true);
+    assert.equal(cssSource.includes(".task-suite-day-hour-row {"), true);
+    assert.equal(cssSource.includes(".task-suite-day-event:hover"), true);
+    assert.equal(cssSource.includes(".task-suite-day-event .task-suite-calendar-note-badge"), true);
+    assert.equal(cssSource.includes(".task-suite-calendar-grid--week .task-suite-calendar-day-title {"), true);
+    assert.equal(cssSource.includes(".task-suite-root.task-suite-mobile .task-suite-timeline-content {"), true);
+    assert.equal(cssSource.includes(".task-suite-root.task-suite-mobile .task-suite-calendar-grid--month .task-suite-calendar-day-tasks {"), true);
+    assert.equal(cssSource.includes("overflow: visible;"), true);
+    assert.equal(cssSource.includes("overflow-x: hidden;"), true);
+    assert.equal(cssSource.includes("display: none;"), true);
 }
 
 run();

@@ -2,7 +2,7 @@
   "name": "siyuan-plugin-task-suite-manager",
   "author": "pcc25132264",
   "url": "https://github.com/pcc25132264/siyuan-plugin-task-suite-manager",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "minAppVersion": "3.0.0",
   "backends": ["all"],
   "frontends": ["all"],
@@ -25,5 +25,6 @@
     "custom": []
   },
   "keywords": ["task", "todo", "timeline", "kanban", "calendar", "gantt"],
-  "icon": "iconList"
+  "icon": "iconList",
+  "css": "index.css"
 }

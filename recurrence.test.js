@@ -2,9 +2,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const INDEX_PATH = path.join(__dirname, "index.js");
 
 function loadPluginClass() {
-    const source = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
+    const source = fs.readFileSync(INDEX_PATH, "utf8");
     const sandbox = {
         module: { exports: {} },
         exports: {},
@@ -41,6 +42,17 @@ function run() {
     const PluginClass = loadPluginClass();
     const plugin = new PluginClass();
     plugin.state = plugin.createDefaultState();
+    plugin.ui = {
+        activeTab: "calendar",
+        timelineStart: "",
+        timelineEnd: "",
+        calendarMode: "month",
+        calendarCursor: "2026-03-04",
+        calendarMonthHeight: 70,
+        ganttStart: "",
+        ganttEnd: "",
+        kanbanDropTaskId: ""
+    };
 
     const oneTimeDates = plugin.getTaskCalendarDates(
         createTask({ repeat: "none", startDate: "2026-03-04T09:00", dueDate: "2026-03-20T18:00" }),
@@ -76,6 +88,35 @@ function run() {
         "2026-03-31"
     );
     assert.equal(reverseWindowWeeklyDates.join(","), ["2026-03-02", "2026-03-09", "2026-03-16", "2026-03-23", "2026-03-30"].join(","));
+
+    const noteTask = createTask({
+        id: "task-note",
+        repeat: "none",
+        startDate: "2026-03-04T09:00",
+        dueDate: "2026-03-04T18:00"
+    });
+    plugin.state.tasks = [noteTask];
+    plugin.state.occurrenceNotes[plugin.getOccurrenceKey(noteTask.id, "2026-03-04")] = "测试备注提示";
+
+    const monthHtml = plugin.renderCalendarView();
+    assert.equal(monthHtml.includes('class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger"'), true);
+    assert.equal(monthHtml.includes('aria-label="测试备注提示"'), true);
+
+    plugin.ui.calendarMode = "day";
+    const dayHtml = plugin.renderCalendarView();
+    assert.equal(dayHtml.includes('class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger"'), true);
+    assert.equal(dayHtml.includes('aria-label="测试备注提示"'), true);
+
+    const source = fs.readFileSync(INDEX_PATH, "utf8");
+    assert.equal(source.includes(".task-suite-day-timeline {"), true);
+    assert.equal(source.includes(".task-suite-day-hour-row {"), true);
+    assert.equal(source.includes(".task-suite-day-event:hover"), true);
+    assert.equal(source.includes(".task-suite-day-event .task-suite-calendar-note-badge"), true);
+    assert.equal(source.includes("overflow: visible;"), true);
+    assert.equal(source.includes("handleRootMouseOver(event)"), true);
+    assert.equal(source.includes("getOrCreateNoteTooltip()"), true);
+    assert.equal(source.includes('tooltip.style.whiteSpace = "pre-wrap";'), true);
+    assert.equal(source.includes('tooltip.style.overflowWrap = "anywhere";'), true);
 }
 
 run();

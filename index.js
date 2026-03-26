@@ -136,6 +136,10 @@
                 this.dialog.destroy();
                 this.dialog = null;
             }
+            if (this.noteTooltipEl && this.noteTooltipEl.parentElement) {
+                this.noteTooltipEl.parentElement.removeChild(this.noteTooltipEl);
+            }
+            this.noteTooltipEl = null;
             this.tabElement = null;
             this.root = null;
         }
@@ -991,6 +995,8 @@
                             text-overflow: ellipsis;
                         }
                         .task-suite-calendar-note-badge {
+                            display: inline-flex;
+                            align-items: center;
                             min-height: 16px;
                             padding: 0 5px;
                             border-radius: 999px;
@@ -999,6 +1005,7 @@
                             color: var(--task-suite-text-soft);
                             background: color-mix(in srgb, var(--task-suite-chip-bg) 65%, var(--task-suite-surface));
                             white-space: nowrap;
+                            cursor: help;
                         }
                         .task-suite-calendar-grid--month .task-suite-calendar-task {
                             padding: 1px 4px;
@@ -1023,14 +1030,17 @@
                         .task-suite-day-timeline {
                             border: 1px solid var(--task-suite-border);
                             border-radius: 8px;
-                            overflow: hidden;
+                            overflow: visible;
                             background: var(--task-suite-surface);
+                            position: relative;
                         }
                         .task-suite-day-hour-row {
                             display: grid;
                             grid-template-columns: 64px 1fr;
                             border-top: 1px solid var(--task-suite-border);
                             min-height: 34px;
+                            overflow: visible;
+                            position: relative;
                         }
                         .task-suite-day-hour-row:first-child {
                             border-top: none;
@@ -1048,6 +1058,8 @@
                             flex-direction: column;
                             gap: 4px;
                             align-items: stretch;
+                            overflow: visible;
+                            position: relative;
                         }
                         .task-suite-day-event {
                             font-size: 12px;
@@ -1061,6 +1073,17 @@
                             gap: 6px;
                             min-width: 0;
                             cursor: pointer;
+                            position: relative;
+                            z-index: 1;
+                            overflow: visible;
+                        }
+                        .task-suite-day-event:hover,
+                        .task-suite-day-event:focus-within {
+                            z-index: 6;
+                        }
+                        .task-suite-day-event .task-suite-calendar-note-badge {
+                            position: relative;
+                            z-index: 7;
                         }
                         .task-suite-day-event.status-todo {
                             background: color-mix(in srgb, var(--b3-theme-primary-lighter) 42%, var(--b3-theme-background));
@@ -1422,10 +1445,102 @@
             this.root.addEventListener("click", (event) => this.handleRootClick(event));
             this.root.addEventListener("submit", (event) => this.handleRootSubmit(event));
             this.root.addEventListener("change", (event) => this.handleRootChange(event));
+            this.root.addEventListener("mouseover", (event) => this.handleRootMouseOver(event));
+            this.root.addEventListener("mouseout", (event) => this.handleRootMouseOut(event));
+            this.root.addEventListener("focusin", (event) => this.handleRootFocusIn(event));
+            this.root.addEventListener("focusout", (event) => this.handleRootFocusOut(event));
             this.root.addEventListener("dragstart", (event) => this.handleDragStart(event));
             this.root.addEventListener("dragover", (event) => this.handleDragOver(event));
             this.root.addEventListener("drop", (event) => this.handleDrop(event));
             this.root.addEventListener("dragend", (event) => this.handleDragEnd(event));
+        }
+
+        handleRootMouseOver(event) {
+            const badge = event.target.closest(".task-suite-note-tooltip-trigger");
+            if (!badge || !this.root || !this.root.contains(badge)) {
+                return;
+            }
+            this.showNoteTooltip(badge);
+        }
+
+        handleRootMouseOut(event) {
+            const badge = event.target.closest(".task-suite-note-tooltip-trigger");
+            if (!badge || !this.root || !this.root.contains(badge)) {
+                return;
+            }
+            const nextTarget = event.relatedTarget;
+            if (nextTarget && badge.contains(nextTarget)) {
+                return;
+            }
+            this.hideNoteTooltip();
+        }
+
+        handleRootFocusIn(event) {
+            const badge = event.target.closest(".task-suite-note-tooltip-trigger");
+            if (!badge || !this.root || !this.root.contains(badge)) {
+                return;
+            }
+            this.showNoteTooltip(badge);
+        }
+
+        handleRootFocusOut(event) {
+            const badge = event.target.closest(".task-suite-note-tooltip-trigger");
+            if (!badge || !this.root || !this.root.contains(badge)) {
+                return;
+            }
+            this.hideNoteTooltip();
+        }
+
+        getOrCreateNoteTooltip() {
+            if (this.noteTooltipEl && this.noteTooltipEl.isConnected) {
+                return this.noteTooltipEl;
+            }
+            const tooltip = document.createElement("div");
+            tooltip.className = "tooltip";
+            tooltip.style.display = "none";
+            tooltip.style.pointerEvents = "none";
+            tooltip.style.whiteSpace = "pre-wrap";
+            tooltip.style.overflowWrap = "anywhere";
+            tooltip.style.wordBreak = "break-word";
+            tooltip.style.maxWidth = "min(420px, 80vw)";
+            document.body.appendChild(tooltip);
+            this.noteTooltipEl = tooltip;
+            return tooltip;
+        }
+
+        showNoteTooltip(target) {
+            if (!target) {
+                return;
+            }
+            const note = String(target.getAttribute("aria-label") || "").trim();
+            if (!note) {
+                this.hideNoteTooltip();
+                return;
+            }
+            const tooltip = this.getOrCreateNoteTooltip();
+            tooltip.textContent = note;
+            tooltip.style.display = "block";
+            const targetRect = target.getBoundingClientRect();
+            const tooltipRect = tooltip.getBoundingClientRect();
+            const offset = 8;
+            let top = targetRect.top - tooltipRect.height - offset;
+            if (top < offset) {
+                top = targetRect.bottom + offset;
+            }
+            if (top + tooltipRect.height > window.innerHeight - offset) {
+                top = Math.max(offset, targetRect.top - tooltipRect.height - offset);
+            }
+            let left = targetRect.left + (targetRect.width - tooltipRect.width) / 2;
+            left = Math.max(offset, Math.min(left, window.innerWidth - tooltipRect.width - offset));
+            tooltip.style.top = `${Math.round(top)}px`;
+            tooltip.style.left = `${Math.round(left)}px`;
+        }
+
+        hideNoteTooltip() {
+            if (!this.noteTooltipEl) {
+                return;
+            }
+            this.noteTooltipEl.style.display = "none";
         }
 
         handleRootClick(event) {
@@ -1676,6 +1791,7 @@
             if (!this.root) {
                 return;
             }
+            this.hideNoteTooltip();
             const tabHost = this.root.querySelector("[data-role='tabs']");
             const contentHost = this.root.querySelector("[data-role='content']");
             tabHost.innerHTML = TAB_OPTIONS.map((tab) => `
@@ -1995,7 +2111,7 @@
                                                 const occurrenceStatus = this.getOccurrenceStatus(item.task, day.date);
                                                 const statusClass = this.getStatusClass(occurrenceStatus);
                                                 const note = this.getOccurrenceNote(item.task, day.date);
-                                                const noteBadge = note ? `<span class="task-suite-calendar-note-badge b3-tooltips b3-tooltips__n" aria-label="${this.escapeHtml(note)}" title="${this.escapeHtml(note)}">备注</span>` : "";
+                                                const noteBadge = note ? `<span class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger" tabindex="0" aria-label="${this.escapeHtml(note)}">备注</span>` : "";
                                                 const repeatBadge = item.task.repeat !== "none" ? `<span class="task-suite-calendar-repeat-badge" title="重复规则：${this.getRepeatLabel(item.task.repeat)}">${this.getRepeatLabel(item.task.repeat)}</span>` : "";
                                                 return mode === "month" ? `
                                                     <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
@@ -3045,7 +3161,7 @@
                                 const occurrenceStatus = this.getOccurrenceStatus(item.task, day);
                                 const statusClass = this.getStatusClass(occurrenceStatus);
                                 const note = this.getOccurrenceNote(item.task, day);
-                                const noteBadge = note ? `<span class="task-suite-calendar-note-badge b3-tooltips b3-tooltips__n" aria-label="${this.escapeHtml(note)}" title="${this.escapeHtml(note)}">备注</span>` : "";
+                                const noteBadge = note ? `<span class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger" tabindex="0" aria-label="${this.escapeHtml(note)}">备注</span>` : "";
                                 const repeatBadge = item.task.repeat !== "none" ? `<span class="task-suite-calendar-repeat-badge" title="重复规则：${this.getRepeatLabel(item.task.repeat)}">${this.getRepeatLabel(item.task.repeat)}</span>` : "";
                                 return `
                                     <div class="task-suite-day-event ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day}">

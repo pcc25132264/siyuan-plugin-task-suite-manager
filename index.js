@@ -32,11 +32,11 @@
     ];
 
     const TAB_OPTIONS = [
-        { value: "list", label: "清单", icon: "☰" },
-        { value: "kanban", label: "看板", icon: "▦" },
-        { value: "calendar", label: "日历", icon: "📅" },
-        { value: "gantt", label: "甘特图", icon: "📊" },
-        { value: "timeline", label: "时间轴", icon: "🕘" }
+        { value: "list", label: "清单", icon: "iconList" },
+        { value: "kanban", label: "看板", icon: "iconLayoutRight" },
+        { value: "calendar", label: "日历", icon: "iconCalendar" },
+        { value: "gantt", label: "甘特图", icon: "iconSort" },
+        { value: "timeline", label: "时间轴", icon: "iconHistory" }
     ];
 
     class SiYuanTaskSuitePlugin extends Plugin {
@@ -380,8 +380,8 @@
                     <div class="task-suite-toolbar">
                         <div class="layout-tab-bar fn__flex task-suite-tabs" data-role="tabs"></div>
                         <div class="task-suite-toolbar-actions">
-                            <button class="b3-button b3-button--outline task-suite-toolbar-icon-btn" data-action="toggle-theme" title="${themeMode === "dark" ? "切换浅色主题" : "切换暗黑主题"}">${themeMode === "dark" ? "☀" : "🌙"}</button>
-                            <button class="b3-button b3-button--outline task-suite-toolbar-icon-btn" data-action="run-self-test" title="运行自测">🧪</button>
+                            <button class="b3-button b3-button--outline task-suite-toolbar-icon-btn" data-action="toggle-theme" title="${themeMode === "dark" ? "切换浅色主题" : "切换暗黑主题"}">${this.renderSiYuanIcon(themeMode === "dark" ? "iconLight" : "iconDark", "b3-button__icon task-suite-icon-svg")}</button>
+                            <button class="b3-button b3-button--outline task-suite-toolbar-icon-btn" data-action="run-self-test" title="运行自测">${this.renderSiYuanIcon("iconCheck", "b3-button__icon task-suite-icon-svg")}</button>
                         </div>
                     </div>
                     <div class="task-suite-content" data-role="content"></div>
@@ -750,7 +750,7 @@
                     data-action="switch-tab"
                     title="${tab.label}"
                     data-tab="${tab.value}">
-                    <span class="task-suite-tab-icon">${tab.icon || "•"}</span>
+                    <span class="task-suite-tab-icon">${this.renderSiYuanIcon(tab.icon || "iconList", "task-suite-tab-icon-svg")}</span>
                     <span class="item__text task-suite-tab-label">${tab.label}</span>
                 </div>
             `).join("");
@@ -816,9 +816,9 @@
                             </div>
                         </div>
                         <div class="task-suite-task-actions">
-                            <button class="b3-button b3-button--outline task-suite-icon-btn" data-action="quick-status" data-task-id="${task.id}" title="流转状态">↻</button>
-                            <button class="b3-button b3-button--outline task-suite-icon-btn" data-action="open-edit-task" data-task-id="${task.id}" title="编辑">✎</button>
-                            <button class="b3-button b3-button--error task-suite-icon-btn" data-action="delete-task" data-task-id="${task.id}" title="删除">🗑</button>
+                            <button class="b3-button b3-button--outline task-suite-icon-btn" data-action="quick-status" data-task-id="${task.id}" title="流转状态">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
+                            <button class="b3-button b3-button--outline task-suite-icon-btn" data-action="open-edit-task" data-task-id="${task.id}" title="编辑">${this.renderSiYuanIcon("iconEdit", "b3-button__icon task-suite-icon-svg")}</button>
+                            <button class="b3-button b3-button--error task-suite-icon-btn" data-action="delete-task" data-task-id="${task.id}" title="删除">${this.renderSiYuanIcon("iconTrashcan", "b3-button__icon task-suite-icon-svg")}</button>
                         </div>
                     </div>
                     <div style="margin-top: 6px;">${this.escapeHtml(task.description || "暂无描述")}</div>
@@ -1058,7 +1058,7 @@
                                                 <strong>${dayTitle}</strong>
                                                 <div class="task-suite-calendar-lunar">${this.getLunarLabel(day.date)}</div>
                                             </div>
-                                            <button class="b3-button b3-button--outline task-suite-calendar-add-btn" data-action="new-task-on-date" data-date="${day.date}">+</button>
+                                            <button class="b3-button b3-button--outline task-suite-calendar-add-btn" data-action="new-task-on-date" data-date="${day.date}">${this.renderSiYuanIcon("iconAdd", "b3-button__icon task-suite-icon-svg")}</button>
                                         </div>
                                         <div class="task-suite-calendar-day-tasks">
                                             ${renderTasks.map((item) => {
@@ -1076,7 +1076,7 @@
                                                             </div>
                                                             ${repeatBadge}
                                                             ${noteBadge}
-                                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
+                                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
                                                         </div>
                                                     </div>
                                                 ` : `
@@ -1085,7 +1085,7 @@
                                                             <span class="task-suite-calendar-status ${statusClass}" title="${this.getStatusLabel(occurrenceStatus)}">${this.getStatusLabel(occurrenceStatus)}</span>
                                                             ${repeatBadge}
                                                             ${noteBadge}
-                                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
+                                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
                                                         </div>
                                                         <div>
                                                             ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
@@ -1139,7 +1139,7 @@
                                             </div>
                                             ${repeatBadge}
                                             ${noteBadge}
-                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">↻</button>
+                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
                                         </div>
                                     </div>
                                 `;
@@ -1332,7 +1332,7 @@
                                 <div class="task-suite-field">
                                     <label>状态</label>
                                     <select class="b3-select fn__block" name="status">
-                                        ${STATUS_OPTIONS.map((item) => `<option value="${item.value}" ${item.value === task.status ? "selected" : ""}>${this.getStatusIcon(item.value)} ${item.label}</option>`).join("")}
+                                        ${STATUS_OPTIONS.map((item) => `<option value="${item.value}" ${item.value === task.status ? "selected" : ""}>${item.label}</option>`).join("")}
                                     </select>
                                 </div>
                                 <div class="task-suite-field">
@@ -2099,18 +2099,10 @@
             return STATUS_OPTIONS.find((item) => item.value === status)?.label || status;
         }
 
-        getStatusIcon(status) {
-            const normalized = this.normalizeStatus(status);
-            if (normalized === "todo") {
-                return "○";
-            }
-            if (normalized === "in_progress") {
-                return "◔";
-            }
-            if (normalized === "done") {
-                return "✓";
-            }
-            return "⛔";
+        renderSiYuanIcon(iconName, className = "") {
+            const normalizedIcon = iconName || "iconList";
+            const normalizedClass = className ? ` class="${className}"` : "";
+            return `<svg${normalizedClass}><use xlink:href="#${normalizedIcon}"></use></svg>`;
         }
 
         getPriorityLabel(priority) {
@@ -2198,7 +2190,7 @@
                                         <span class="task-suite-day-event-title">${this.getCalendarTaskTimeLabel(item.task, day) ? `${this.getCalendarTaskTimeLabel(item.task, day)} ` : ""}${this.escapeHtml(item.task.title)}</span>
                                         ${repeatBadge}
                                         ${noteBadge}
-                                        <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day}">↻</button>
+                                        <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
                                     </div>
                                 `;
                             }).join("")}

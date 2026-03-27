@@ -89,8 +89,14 @@
     padding: 0 8px;
 }
 .task-suite-tab-icon {
-    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     line-height: 1;
+}
+.task-suite-tab-icon .task-suite-tab-icon-svg {
+    width: 14px;
+    height: 14px;
 }
 .task-suite-tab-label {
     white-space: nowrap;
@@ -111,7 +117,6 @@
     align-items: center;
     justify-content: center;
     line-height: 1;
-    font-size: 14px;
 }
 .task-suite-tab.item--focus {
     color: var(--task-suite-header-text);
@@ -150,8 +155,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
     line-height: 1;
+}
+.task-suite-icon-svg {
+    width: 14px;
+    height: 14px;
 }
 .task-suite-grid {
     display: grid;
@@ -410,8 +418,8 @@
 .task-suite-calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 6px;
-    margin-top: 6px;
+    /* gap: 6px; */
+    /* margin-top: 6px; */
 }
 .task-suite-calendar-weekdays {
     display: grid;
@@ -464,12 +472,15 @@
 }
 .task-suite-calendar-day {
     min-height: 120px;
-    border: 1px solid var(--task-suite-border);
+    border-right: 1px solid var(--task-suite-border);
     padding: 6px;
     display: flex;
     flex-direction: column;
     gap: 6px;
     background: var(--task-suite-surface);
+}
+.task-suite-calendar-day:last-child {
+    border-right: none;
 }
 .task-suite-calendar-day.dimmed {
     opacity: .55;
@@ -525,13 +536,15 @@
     width: 22px;
     padding: 0;
     line-height: 20px;
-    font-size: 16px;
-    font-weight: 700;
     border-radius: 999px;
     flex-shrink: 0;
     border: none !important;
     box-shadow: none !important;
     background: transparent !important;
+}
+.task-suite-calendar-add-btn .task-suite-icon-svg {
+    width: 12px;
+    height: 12px;
 }
 .task-suite-calendar-add-btn:hover {
     background: color-mix(in srgb, var(--task-suite-button-bg) 45%, transparent) !important;
@@ -851,7 +864,6 @@
     min-width: 24px;
     padding: 0;
     line-height: 18px;
-    font-size: 12px;
     border-radius: 999px;
 }
 .task-suite-calendar-grid--month .task-suite-calendar-switch-btn {
@@ -859,8 +871,11 @@
     height: 16px;
     width: 16px;
     min-width: 16px;
-    font-size: 10px;
     line-height: 14px;
+}
+.task-suite-calendar-grid--month .task-suite-calendar-switch-btn .task-suite-icon-svg {
+    width: 10px;
+    height: 10px;
 }
 .task-suite-progress-slider-row {
     display: flex;

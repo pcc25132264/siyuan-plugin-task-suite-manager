@@ -43,7 +43,8 @@
         async onload() {
             const os = window?.siyuan?.config?.system?.os;
             this.isMobile = os === "ios" || os === "android" || !!document.getElementById("sidebar");
-            this.dataFile = "task-suite-state.json";
+            this.storage = this.createStorageConfig();
+            this.resetDirtyState();
             this.state = this.createDefaultState();
             this.ui = {
                 activeTab: "list",
@@ -164,15 +165,220 @@
             };
         }
 
-        async loadState() {
-            const data = await this.loadData(this.dataFile);
-            if (!data || typeof data !== "object") {
+        createStorageConfig() {
+            return {
+                metaSettings: "storage/meta/settings.json",
+                indexActive: "storage/index/active.index.json",
+                historyManifest: "storage/history/manifest.json",
+                taskDir: "storage/tasks",
+                occurrenceDir: "storage/occ",
+                historyDir: "storage/history",
+                historyPrefix: "events-"
+            };
+        }
+
+        resetDirtyState() {
+            this.dirty = {
+                tasksUpsert: new Set(),
+                tasksDelete: new Set(),
+                occurrencesUpsert: new Set(),
+                occurrencesDelete: new Set(),
+                settings: false,
+                historyEntries: []
+            };
+        }
+
+        markTaskDirty(taskId) {
+            if (!taskId) {
                 return;
             }
-            this.state = {
-                ...this.createDefaultState(),
-                ...data
+            this.dirty.tasksDelete.delete(taskId);
+            this.dirty.tasksUpsert.add(taskId);
+        }
+
+        markTaskDeleted(taskId) {
+            if (!taskId) {
+                return;
+            }
+            this.dirty.tasksUpsert.delete(taskId);
+            this.dirty.tasksDelete.add(taskId);
+        }
+
+        markOccurrenceDirty(taskId) {
+            if (!taskId) {
+                return;
+            }
+            this.dirty.occurrencesDelete.delete(taskId);
+            this.dirty.occurrencesUpsert.add(taskId);
+        }
+
+        markOccurrenceDeleted(taskId) {
+            if (!taskId) {
+                return;
+            }
+            this.dirty.occurrencesUpsert.delete(taskId);
+            this.dirty.occurrencesDelete.add(taskId);
+        }
+
+        markSettingsDirty() {
+            this.dirty.settings = true;
+        }
+
+        getTaskStoragePath(taskId) {
+            return `${this.storage.taskDir}/${taskId}.json`;
+        }
+
+        getOccurrenceStoragePath(taskId) {
+            return `${this.storage.occurrenceDir}/${taskId}.json`;
+        }
+
+        getHistoryStoragePath(monthKey) {
+            return `${this.storage.historyDir}/${this.storage.historyPrefix}${monthKey}.json`;
+        }
+
+        getMonthKey(value) {
+            const date = this.parseDate(value) || new Date();
+            const year = date.getFullYear();
+            const month = `${date.getMonth() + 1}`.padStart(2, "0");
+            return `${year}-${month}`;
+        }
+
+        async safeLoadData(path, fallback) {
+            try {
+                const data = await this.loadData(path);
+                if (data === undefined || data === null) {
+                    return fallback;
+                }
+                return data;
+            } catch (error) {
+                return fallback;
+            }
+        }
+
+        buildTaskIndex() {
+            return {
+                updatedAt: new Date().toISOString(),
+                tasks: this.state.tasks.map((task) => ({
+                    id: task.id,
+                    title: task.title || "",
+                    status: this.normalizeStatus(task.status),
+                    priority: this.normalizePriority(task.priority),
+                    repeat: this.normalizeRepeat(task.repeat),
+                    progress: this.normalizeProgress(task.progress),
+                    startDate: task.startDate || "",
+                    dueDate: task.dueDate || "",
+                    startTime: this.normalizeTimeInput(task.startTime || ""),
+                    dueTime: this.normalizeTimeInput(task.dueTime || ""),
+                    updatedAt: task.updatedAt || "",
+                    createdAt: task.createdAt || ""
+                }))
             };
+        }
+
+        extractTaskOccurrenceData(taskId) {
+            const prefix = `${taskId}::`;
+            const statuses = {};
+            const notes = {};
+            const reminders = {};
+            Object.keys(this.state.occurrenceStatuses).forEach((key) => {
+                if (key.startsWith(prefix)) {
+                    statuses[key.slice(prefix.length)] = this.state.occurrenceStatuses[key];
+                }
+            });
+            Object.keys(this.state.occurrenceNotes).forEach((key) => {
+                if (key.startsWith(prefix)) {
+                    notes[key.slice(prefix.length)] = this.state.occurrenceNotes[key];
+                }
+            });
+            Object.keys(this.state.reminderFired).forEach((key) => {
+                if (key.startsWith(prefix)) {
+                    reminders[key.slice(prefix.length)] = this.state.reminderFired[key];
+                }
+            });
+            return {
+                taskId,
+                statuses,
+                notes,
+                reminders,
+                updatedAt: new Date().toISOString()
+            };
+        }
+
+        applyTaskOccurrenceData(taskId, payload) {
+            if (!taskId || !payload || typeof payload !== "object") {
+                return;
+            }
+            const statuses = payload.statuses && typeof payload.statuses === "object" ? payload.statuses : {};
+            const notes = payload.notes && typeof payload.notes === "object" ? payload.notes : {};
+            const reminders = payload.reminders && typeof payload.reminders === "object" ? payload.reminders : {};
+            Object.entries(statuses).forEach(([key, value]) => {
+                this.state.occurrenceStatuses[`${taskId}::${key}`] = this.normalizeStatus(value);
+            });
+            Object.entries(notes).forEach(([key, value]) => {
+                this.state.occurrenceNotes[`${taskId}::${key}`] = String(value || "");
+            });
+            Object.entries(reminders).forEach(([key, value]) => {
+                this.state.reminderFired[`${taskId}::${key}`] = String(value || "");
+            });
+        }
+
+        async loadHistoryFromStorage() {
+            const manifest = await this.safeLoadData(this.storage.historyManifest, { months: [] });
+            const months = Array.isArray(manifest?.months) ? manifest.months : [];
+            const normalizedMonths = months
+                .map((item) => String(item || ""))
+                .filter(Boolean)
+                .sort((a, b) => b.localeCompare(a));
+            const history = [];
+            for (const monthKey of normalizedMonths) {
+                const path = this.getHistoryStoragePath(monthKey);
+                const rows = await this.safeLoadData(path, []);
+                if (!Array.isArray(rows)) {
+                    continue;
+                }
+                rows.forEach((entry) => {
+                    if (!entry || typeof entry !== "object") {
+                        return;
+                    }
+                    history.push({
+                        id: entry.id || this.makeId("history"),
+                        taskId: entry.taskId || "",
+                        type: entry.type || "记录",
+                        detail: entry.detail || "",
+                        time: entry.time || new Date().toISOString()
+                    });
+                });
+                if (history.length >= 2000) {
+                    break;
+                }
+            }
+            history.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+            this.state.history = history.slice(0, 2000);
+        }
+
+        async loadState() {
+            this.state = this.createDefaultState();
+            const settings = await this.safeLoadData(this.storage.metaSettings, null);
+            if (settings && typeof settings === "object") {
+                this.state.settings = {
+                    ...this.state.settings,
+                    ...settings
+                };
+            }
+            const indexData = await this.safeLoadData(this.storage.indexActive, { tasks: [] });
+            const taskRows = Array.isArray(indexData?.tasks) ? indexData.tasks : [];
+            const taskIds = taskRows
+                .map((item) => String(item?.id || ""))
+                .filter(Boolean);
+            for (const taskId of taskIds) {
+                const task = await this.safeLoadData(this.getTaskStoragePath(taskId), null);
+                if (task && typeof task === "object") {
+                    this.state.tasks.push(task);
+                }
+                const occurrence = await this.safeLoadData(this.getOccurrenceStoragePath(taskId), null);
+                this.applyTaskOccurrenceData(taskId, occurrence);
+            }
+            await this.loadHistoryFromStorage();
         }
 
         normalizeState() {
@@ -214,9 +420,10 @@
                     priority: this.normalizePriority(task.priority),
                     tags: Array.isArray(task.tags) ? task.tags : [],
                     repeat: this.normalizeRepeat(task.repeat),
-                    startDate: task.startDate || "",
-                    dueDate: task.dueDate || "",
-                    endDate: task.endDate || "",
+                    startDate: this.normalizeDateInput(task.startDate || ""),
+                    dueDate: this.normalizeDateInput(task.dueDate || ""),
+                    startTime: this.normalizeTimeInput(task.startTime || ""),
+                    dueTime: this.normalizeTimeInput(task.dueTime || ""),
                     reminderTime: task.reminderTime || "",
                     progress: this.normalizeProgress(task.progress),
                     resource: task.resource || "",
@@ -254,6 +461,32 @@
             return "none";
         }
 
+        normalizeDateInput(value) {
+            const normalized = this.toDateOnly(value);
+            if (!normalized) {
+                return "";
+            }
+            const date = this.parseDate(normalized);
+            if (!date) {
+                return "";
+            }
+            return this.formatDate(date);
+        }
+
+        normalizeTimeInput(value) {
+            const normalized = String(value || "").trim();
+            if (!normalized) {
+                return "00:00";
+            }
+            const matched = normalized.match(/^(\d{1,2}):(\d{1,2})/);
+            if (!matched) {
+                return "00:00";
+            }
+            const hour = Math.max(0, Math.min(23, Number(matched[1])));
+            const minute = Math.max(0, Math.min(59, Number(matched[2])));
+            return `${`${hour}`.padStart(2, "0")}:${`${minute}`.padStart(2, "0")}`;
+        }
+
         normalizeCalendarMonthHeight(value) {
             const parsed = Number(value);
             const options = [50, 60, 70, 80];
@@ -276,7 +509,67 @@
         }
 
         async saveState() {
-            await this.saveData(this.dataFile, this.state);
+            if (this.dirty.settings) {
+                await this.saveData(this.storage.metaSettings, this.state.settings);
+            }
+            for (const taskId of this.dirty.tasksUpsert) {
+                const task = this.findTask(taskId);
+                if (task) {
+                    await this.saveData(this.getTaskStoragePath(taskId), task);
+                }
+            }
+            for (const taskId of this.dirty.tasksDelete) {
+                await this.saveData(this.getTaskStoragePath(taskId), {
+                    id: taskId,
+                    deleted: true,
+                    updatedAt: new Date().toISOString()
+                });
+            }
+            for (const taskId of this.dirty.occurrencesUpsert) {
+                await this.saveData(this.getOccurrenceStoragePath(taskId), this.extractTaskOccurrenceData(taskId));
+            }
+            for (const taskId of this.dirty.occurrencesDelete) {
+                await this.saveData(this.getOccurrenceStoragePath(taskId), {
+                    taskId,
+                    statuses: {},
+                    notes: {},
+                    reminders: {},
+                    deleted: true,
+                    updatedAt: new Date().toISOString()
+                });
+            }
+            await this.saveData(this.storage.indexActive, this.buildTaskIndex());
+            if (this.dirty.historyEntries.length) {
+                const manifest = await this.safeLoadData(this.storage.historyManifest, { months: [] });
+                const monthSet = new Set(Array.isArray(manifest?.months) ? manifest.months : []);
+                const grouped = new Map();
+                this.dirty.historyEntries.forEach((entry) => {
+                    const monthKey = this.getMonthKey(entry.time);
+                    monthSet.add(monthKey);
+                    if (!grouped.has(monthKey)) {
+                        grouped.set(monthKey, []);
+                    }
+                    grouped.get(monthKey).push(entry);
+                });
+                for (const [monthKey, entries] of grouped.entries()) {
+                    const path = this.getHistoryStoragePath(monthKey);
+                    const existing = await this.safeLoadData(path, []);
+                    const rowList = Array.isArray(existing) ? existing : [];
+                    const merged = [...entries, ...rowList]
+                        .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+                        .slice(0, 5000);
+                    await this.saveData(path, merged);
+                }
+                const sortedMonths = Array.from(monthSet)
+                    .map((item) => String(item || ""))
+                    .filter(Boolean)
+                    .sort((a, b) => b.localeCompare(a));
+                await this.saveData(this.storage.historyManifest, {
+                    months: sortedMonths,
+                    updatedAt: new Date().toISOString()
+                });
+            }
+            this.resetDirtyState();
         }
 
         openSetting() {
@@ -560,6 +853,7 @@
                     done: false
                 });
                 task.updatedAt = new Date().toISOString();
+                this.markTaskDirty(task.id);
                 this.pushHistory(task.id, "子任务新增", `新增子任务「${title}」`);
                 input.value = "";
                 this.commitAndRender();
@@ -574,6 +868,7 @@
                 task.subtasks = task.subtasks.filter((item) => item.id !== (target.dataset.subtaskId || ""));
                 if (task.subtasks.length !== before) {
                     task.updatedAt = new Date().toISOString();
+                    this.markTaskDirty(task.id);
                     this.pushHistory(task.id, "子任务删除", "移除子任务");
                     this.commitAndRender();
                 }
@@ -581,7 +876,7 @@
             }
             if (action === "new-task-on-date") {
                 const date = target.dataset.date || this.formatDate(new Date());
-                this.openTaskEditorDialog("", `${date}T09:00`);
+                this.openTaskEditorDialog("", date);
                 return;
             }
             if (action === "calendar-prev") {
@@ -613,6 +908,7 @@
             if (action === "toggle-theme") {
                 const current = this.normalizeThemeMode(this.state.settings.themeMode);
                 this.state.settings.themeMode = current === "dark" ? "light" : "dark";
+                this.markSettingsDirty();
                 this.saveState();
                 if (this.tabElement) {
                     this.mountMainTab();
@@ -643,6 +939,7 @@
                 subtask.done = !!target.checked;
                 task.updatedAt = new Date().toISOString();
                 this.recomputeTaskProgress(task);
+                this.markTaskDirty(task.id);
                 this.pushHistory(task.id, "子任务状态", `子任务「${subtask.title}」${subtask.done ? "完成" : "重开"}`);
                 this.commitAndRender();
                 return;
@@ -666,6 +963,7 @@
                 const next = this.normalizeCalendarMonthHeight(target.value);
                 this.ui.calendarMonthHeight = next;
                 this.state.settings.calendarMonthHeight = next;
+                this.markSettingsDirty();
                 this.saveState();
                 this.renderApp();
                 return;
@@ -823,9 +1121,10 @@
                     </div>
                     <div style="margin-top: 6px;">${this.escapeHtml(task.description || "暂无描述")}</div>
                     <div class="task-suite-meta" style="margin-top: 8px;">
-                        ${task.startDate ? `<span>计划开始: ${task.startDate}</span>` : ""}
-                        ${task.dueDate ? `<span>计划截止: ${task.dueDate}</span>` : ""}
-                        ${task.endDate ? `<span>实际完成: ${task.endDate}</span>` : ""}
+                        ${task.startDate ? `<span>计划日期: ${task.startDate}</span>` : ""}
+                        ${task.startDate ? `<span>计划时间: ${this.normalizeTimeInput(task.startTime || "")}</span>` : ""}
+                        ${task.dueDate ? `<span>截止日期: ${task.dueDate}</span>` : ""}
+                        ${task.dueDate ? `<span>截止时间: ${this.normalizeTimeInput(task.dueTime || "")}</span>` : ""}
                         ${task.reminderTime ? `<span>提醒: ${task.reminderTime}</span>` : ""}
                     </div>
                     ${task.tags.length ? `
@@ -929,8 +1228,8 @@
                                     <div class="task-suite-kanban-meta">
                                         <span class="task-suite-kanban-chip">进度: ${task.progress}%</span>
                                         ${task.repeat !== "none" ? `<span class="task-suite-kanban-chip">重复: ${this.getRepeatLabel(task.repeat)}</span>` : ""}
-                                        ${task.startDate ? `<span class="task-suite-kanban-chip">开始: ${task.startDate.slice(0, 10)}</span>` : ""}
-                                        ${task.dueDate ? `<span class="task-suite-kanban-chip">截止: ${task.dueDate.slice(0, 10)}</span>` : ""}
+                                        ${task.startDate ? `<span class="task-suite-kanban-chip">计划: ${task.startDate}</span>` : ""}
+                                        ${task.dueDate ? `<span class="task-suite-kanban-chip">截止: ${task.dueDate}</span>` : ""}
                                         ${task.tags.length ? `<span class="task-suite-kanban-chip">${task.tags.slice(0, 2).map((tag) => `#${this.escapeHtml(tag)}`).join(" ")}</span>` : ""}
                                     </div>
                                     ${task.description ? `<div class="task-suite-kanban-desc">${this.escapeHtml(task.description)}</div>` : ""}
@@ -1288,7 +1587,7 @@
             `;
         }
 
-        openTaskEditorDialog(taskId = "", presetDateTime = "") {
+        openTaskEditorDialog(taskId = "", presetDate = "") {
             const editingTask = taskId ? this.findTask(taskId) : null;
             const dependencySet = new Set(editingTask?.dependencies || []);
             const allDependencies = this.state.tasks
@@ -1306,9 +1605,10 @@
                 status: "todo",
                 priority: "medium",
                 repeat: "none",
-                startDate: presetDateTime || "",
-                dueDate: presetDateTime || "",
-                endDate: "",
+                startDate: presetDate || "",
+                dueDate: presetDate || "",
+                startTime: "00:00",
+                dueTime: "00:00",
                 progress: 0,
                 resource: "",
                 tags: []
@@ -1342,16 +1642,20 @@
                                     </select>
                                 </div>
                                 <div class="task-suite-field">
-                                    <label>计划开始时间</label>
-                                    <input class="b3-text-field fn__block" type="datetime-local" name="startDate" value="${this.escapeHtml(this.formatDateTimeLocal(task.startDate))}">
+                                    <label>计划日期</label>
+                                    <input class="b3-text-field fn__block" type="date" name="startDate" value="${this.escapeHtml(this.normalizeDateInput(task.startDate))}">
                                 </div>
                                 <div class="task-suite-field">
-                                    <label>计划截止时间</label>
-                                    <input class="b3-text-field fn__block" type="datetime-local" name="dueDate" value="${this.escapeHtml(this.formatDateTimeLocal(task.dueDate))}">
+                                    <label>计划时间</label>
+                                    <input class="b3-text-field fn__block" type="time" name="startTime" value="${this.escapeHtml(this.normalizeTimeInput(task.startTime))}">
                                 </div>
                                 <div class="task-suite-field">
-                                    <label>实际完成时间</label>
-                                    <input class="b3-text-field fn__block" type="datetime-local" name="endDate" value="${this.escapeHtml(this.formatDateTimeLocal(task.endDate))}">
+                                    <label>截止日期</label>
+                                    <input class="b3-text-field fn__block" type="date" name="dueDate" value="${this.escapeHtml(this.normalizeDateInput(task.dueDate))}">
+                                </div>
+                                <div class="task-suite-field">
+                                    <label>截止时间</label>
+                                    <input class="b3-text-field fn__block" type="time" name="dueTime" value="${this.escapeHtml(this.normalizeTimeInput(task.dueTime))}">
                                 </div>
                                 <div class="task-suite-field">
                                     <label>提醒时间</label>
@@ -1545,6 +1849,8 @@
                 delete this.state.occurrenceNotes[statusKey];
             }
             task.updatedAt = new Date().toISOString();
+            this.markTaskDirty(task.id);
+            this.markOccurrenceDirty(task.id);
             this.pushHistory(task.id, "实例编辑", `${date} 的任务实例已更新`);
             this.commitAndRender();
             this.closeOccurrenceEditorDialog();
@@ -1567,9 +1873,10 @@
                 status: this.normalizeStatus((formData.get("status") || "").toString()),
                 priority: this.normalizePriority((formData.get("priority") || "").toString()),
                 repeat: this.normalizeRepeat((formData.get("repeat") || "").toString()),
-                startDate: this.normalizeDateTimeInput((formData.get("startDate") || "").toString()),
-                dueDate: this.normalizeDateTimeInput((formData.get("dueDate") || "").toString()),
-                endDate: this.normalizeDateTimeInput((formData.get("endDate") || "").toString()),
+                startDate: this.normalizeDateInput((formData.get("startDate") || "").toString()),
+                dueDate: this.normalizeDateInput((formData.get("dueDate") || "").toString()),
+                startTime: this.normalizeTimeInput((formData.get("startTime") || "").toString()),
+                dueTime: this.normalizeTimeInput((formData.get("dueTime") || "").toString()),
                 reminderTime: this.normalizeDateTimeInput((formData.get("reminderTime") || "").toString()),
                 progress: this.normalizeProgress((formData.get("progress") || "").toString()),
                 resource: "",
@@ -1596,7 +1903,8 @@
                 repeat: payload.repeat || "none",
                 startDate: payload.startDate || "",
                 dueDate: payload.dueDate || "",
-                endDate: payload.endDate || "",
+                startTime: this.normalizeTimeInput(payload.startTime || ""),
+                dueTime: this.normalizeTimeInput(payload.dueTime || ""),
                 reminderTime: payload.reminderTime || "",
                 progress: this.normalizeProgress(payload.progress),
                 resource: payload.resource || "",
@@ -1606,6 +1914,8 @@
                 updatedAt: now
             };
             this.state.tasks.unshift(task);
+            this.markTaskDirty(task.id);
+            this.markOccurrenceDirty(task.id);
             this.pushHistory(task.id, "任务创建", `创建任务「${task.title}」`);
             this.commitAndRender();
         }
@@ -1621,11 +1931,17 @@
                 progress: task.progress,
                 dueDate: task.dueDate,
                 startDate: task.startDate,
-                endDate: task.endDate
+                dueTime: task.dueTime,
+                startTime: task.startTime
             };
             Object.assign(task, patch);
+            task.startDate = this.normalizeDateInput(task.startDate);
+            task.dueDate = this.normalizeDateInput(task.dueDate);
+            task.startTime = this.normalizeTimeInput(task.startTime || "");
+            task.dueTime = this.normalizeTimeInput(task.dueTime || "");
             task.progress = this.normalizeProgress(task.progress);
             task.updatedAt = new Date().toISOString();
+            this.markTaskDirty(task.id);
             this.pushHistory(task.id, historyType || "任务更新", this.describeTaskDiff(task, beforeSnapshot));
             this.commitAndRender();
         }
@@ -1636,9 +1952,16 @@
                 return;
             }
             this.state.tasks = this.state.tasks.filter((item) => item.id !== taskId);
+            this.markTaskDeleted(taskId);
+            this.markOccurrenceDeleted(taskId);
             this.removeTaskOccurrenceStatus(taskId);
             this.state.tasks.forEach((item) => {
+                const before = item.dependencies.length;
                 item.dependencies = item.dependencies.filter((id) => id !== taskId);
+                if (item.dependencies.length !== before) {
+                    item.updatedAt = new Date().toISOString();
+                    this.markTaskDirty(item.id);
+                }
             });
             this.pushHistory(taskId, "任务删除", `删除任务「${task.title}」`);
             this.commitAndRender();
@@ -1655,7 +1978,7 @@
             if (before.progress !== task.progress) {
                 changes.push(`进度 ${before.progress}%→${task.progress}%`);
             }
-            if (before.startDate !== task.startDate || before.dueDate !== task.dueDate || before.endDate !== task.endDate) {
+            if (before.startDate !== task.startDate || before.dueDate !== task.dueDate || before.startTime !== task.startTime || before.dueTime !== task.dueTime) {
                 changes.push("时间计划已调整");
             }
             if (!changes.length) {
@@ -1665,13 +1988,15 @@
         }
 
         pushHistory(taskId, type, detail) {
-            this.state.history.unshift({
+            const entry = {
                 id: this.makeId("history"),
                 taskId,
                 type,
                 detail,
                 time: new Date().toISOString()
-            });
+            };
+            this.state.history.unshift(entry);
+            this.dirty.historyEntries.push(entry);
             if (this.state.history.length > 2000) {
                 this.state.history = this.state.history.slice(0, 2000);
             }
@@ -1706,7 +2031,7 @@
             const planEntries = this.state.tasks.flatMap((task) => {
                 const entries = [];
                 if (task.startDate) {
-                    const startDate = this.parseDate(task.startDate);
+                    const startDate = this.combineDateTime(task.startDate, task.startTime);
                     entries.push({
                         time: startDate ? startDate.toISOString() : new Date().toISOString(),
                         title: `计划开始 · ${task.title}`,
@@ -1715,7 +2040,7 @@
                     });
                 }
                 if (task.dueDate) {
-                    const dueDate = this.parseDate(task.dueDate);
+                    const dueDate = this.combineDateTime(task.dueDate, task.dueTime);
                     entries.push({
                         time: dueDate ? dueDate.toISOString() : new Date().toISOString(),
                         title: `计划截止 · ${task.title}`,
@@ -1911,7 +2236,7 @@
             return this.state.tasks
                 .map((task) => {
                     const planStart = this.toDateOnly(task.startDate) || this.toDateOnly(task.dueDate) || this.formatDate(new Date(task.createdAt));
-                    const planEnd = this.toDateOnly(task.endDate) || this.toDateOnly(task.dueDate) || this.toDateOnly(task.startDate) || this.formatDate(new Date(task.createdAt));
+                    const planEnd = this.toDateOnly(task.dueDate) || this.toDateOnly(task.startDate) || this.formatDate(new Date(task.createdAt));
                     if (!planStart || !planEnd) {
                         return null;
                     }
@@ -2142,23 +2467,64 @@
         }
 
         getCalendarTaskDateTime(task, day) {
-            const due = this.parseDate(task.dueDate);
-            const start = this.parseDate(task.startDate);
+            const range = this.getTaskDayTimeRange(task, day);
+            if (!range) {
+                return null;
+            }
+            return this.combineDateTime(day, range.start);
+        }
+
+        getTaskDayTimeRange(task, day) {
+            if (!task || !day) {
+                return null;
+            }
+            let startDate = this.toDateOnly(task.startDate) || this.toDateOnly(task.dueDate) || day;
+            let dueDate = this.toDateOnly(task.dueDate) || this.toDateOnly(task.startDate) || day;
+            let startTime = this.normalizeTimeInput(task.startTime || "");
+            let dueTime = this.normalizeTimeInput(task.dueTime || "");
+            if (startDate > dueDate) {
+                [startDate, dueDate] = [dueDate, startDate];
+                [startTime, dueTime] = [dueTime, startTime];
+            }
             if (task.repeat !== "none") {
-                const base = start || due;
-                if (base) {
-                    const hh = `${base.getHours()}`.padStart(2, "0");
-                    const mm = `${base.getMinutes()}`.padStart(2, "0");
-                    return this.parseDate(`${day}T${hh}:${mm}`);
-                }
+                return {
+                    start: startTime,
+                    end: dueTime
+                };
             }
-            if (due && this.toDateOnly(task.dueDate) === day) {
-                return due;
+            if (startDate === dueDate) {
+                return {
+                    start: startTime,
+                    end: dueTime
+                };
             }
-            if (start && this.toDateOnly(task.startDate) === day) {
-                return start;
+            if (day === startDate) {
+                return {
+                    start: startTime,
+                    end: "24:00"
+                };
+            }
+            if (day === dueDate) {
+                return {
+                    start: "00:00",
+                    end: dueTime
+                };
+            }
+            if (day > startDate && day < dueDate) {
+                return {
+                    start: "00:00",
+                    end: "24:00"
+                };
             }
             return null;
+        }
+
+        getCalendarTaskRangeLabel(task, day) {
+            const range = this.getTaskDayTimeRange(task, day);
+            if (!range) {
+                return "";
+            }
+            return `${range.start}-${range.end}`;
         }
 
         renderCalendarDayTimeline(day, tasks) {
@@ -2187,7 +2553,7 @@
                                 return `
                                     <div class="task-suite-day-event ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day}">
                                         <span class="task-suite-calendar-status ${statusClass}" title="${this.getStatusLabel(occurrenceStatus)}">${this.getStatusLabel(occurrenceStatus)}</span>
-                                        <span class="task-suite-day-event-title">${this.getCalendarTaskTimeLabel(item.task, day) ? `${this.getCalendarTaskTimeLabel(item.task, day)} ` : ""}${this.escapeHtml(item.task.title)}</span>
+                                        <span class="task-suite-day-event-title">${this.getCalendarTaskRangeLabel(item.task, day) ? `${this.getCalendarTaskRangeLabel(item.task, day)} ` : ""}${this.escapeHtml(item.task.title)}</span>
                                         ${repeatBadge}
                                         ${noteBadge}
                                         <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
@@ -2311,13 +2677,7 @@
         }
 
         getTaskRepeatTimeLabel(task) {
-            const start = this.parseDate(task.startDate);
-            const due = this.parseDate(task.dueDate);
-            const base = start || due;
-            if (!base) {
-                return "00:00";
-            }
-            return `${`${base.getHours()}`.padStart(2, "0")}:${`${base.getMinutes()}`.padStart(2, "0")}`;
+            return this.normalizeTimeInput(task.startTime || task.dueTime || "");
         }
 
         cycleCalendarOccurrenceStatus(taskId, date) {
@@ -2339,6 +2699,7 @@
             } else {
                 this.state.occurrenceStatuses[key] = next;
             }
+            this.markOccurrenceDirty(task.id);
             this.pushHistory(task.id, "实例状态更新", `${date} 的任务实例状态更新为 ${this.getStatusLabel(next)}`);
             this.commitAndRender();
         }
@@ -2390,6 +2751,7 @@
                 }
                 await this.pushReminder(task);
                 this.state.reminderFired[key] = new Date().toISOString();
+                this.markOccurrenceDirty(task.id);
                 changed = true;
             }
             if (changed) {
@@ -2441,6 +2803,15 @@
             const m = `${date.getMonth() + 1}`.padStart(2, "0");
             const d = `${date.getDate()}`.padStart(2, "0");
             return `${y}-${m}-${d}`;
+        }
+
+        combineDateTime(dateString, timeString) {
+            const date = this.normalizeDateInput(dateString);
+            if (!date) {
+                return null;
+            }
+            const time = this.normalizeTimeInput(timeString || "");
+            return this.parseDate(`${date}T${time}`);
         }
 
         formatDateTimeLocal(value) {
@@ -2516,8 +2887,10 @@
                 id: "self-test",
                 title: "self-test",
                 repeat: "weekly",
-                dueDate: "2026-03-31T18:00",
-                startDate: "2026-03-02T09:00",
+                dueDate: "2026-03-31",
+                startDate: "2026-03-02",
+                startTime: "09:00",
+                dueTime: "18:00",
                 createdAt: "2026-03-01T00:00:00.000Z"
             };
             const weeklyDates = this.getTaskCalendarDates(selfTestTask, "2026-03-01", "2026-03-20");
@@ -2525,8 +2898,8 @@
             const monthlyDates = this.getTaskCalendarDates({
                 ...selfTestTask,
                 repeat: "monthly",
-                startDate: "2026-01-15T09:00",
-                dueDate: "2026-04-30T18:00"
+                startDate: "2026-01-15",
+                dueDate: "2026-04-30"
             }, "2026-01-01", "2026-04-30");
             const expectedMonthlyDates = ["2026-01-15", "2026-02-15", "2026-03-15", "2026-04-15"];
             const checks = [];

@@ -32,8 +32,10 @@ function createTask(overrides) {
         id: "task-test",
         title: "task-test",
         repeat: "none",
-        startDate: "2026-03-01T09:00",
-        dueDate: "2026-03-01T18:00",
+        startDate: "2026-03-01",
+        dueDate: "2026-03-01",
+        startTime: "09:00",
+        dueTime: "18:00",
         createdAt: "2026-03-01T00:00:00.000Z",
         ...overrides
     };
@@ -56,35 +58,35 @@ function run() {
     };
 
     const oneTimeDates = plugin.getTaskCalendarDates(
-        createTask({ repeat: "none", startDate: "2026-03-04T09:00", dueDate: "2026-03-20T18:00" }),
+        createTask({ repeat: "none", startDate: "2026-03-04", dueDate: "2026-03-20" }),
         "2026-03-01",
         "2026-03-31"
     );
     assert.equal(oneTimeDates.join(","), ["2026-03-04"].join(","));
 
     const dailyDates = plugin.getTaskCalendarDates(
-        createTask({ repeat: "daily", startDate: "2026-03-01T09:00", dueDate: "2026-03-05T18:00" }),
+        createTask({ repeat: "daily", startDate: "2026-03-01", dueDate: "2026-03-05" }),
         "2026-03-01",
         "2026-03-31"
     );
     assert.equal(dailyDates.join(","), ["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05"].join(","));
 
     const weeklyDates = plugin.getTaskCalendarDates(
-        createTask({ repeat: "weekly", startDate: "2026-03-02T09:00", dueDate: "2026-03-31T18:00" }),
+        createTask({ repeat: "weekly", startDate: "2026-03-02", dueDate: "2026-03-31" }),
         "2026-03-01",
         "2026-03-31"
     );
     assert.equal(weeklyDates.join(","), ["2026-03-02", "2026-03-09", "2026-03-16", "2026-03-23", "2026-03-30"].join(","));
 
     const monthlyDates = plugin.getTaskCalendarDates(
-        createTask({ repeat: "monthly", startDate: "2026-01-15T09:00", dueDate: "2026-04-30T18:00" }),
+        createTask({ repeat: "monthly", startDate: "2026-01-15", dueDate: "2026-04-30" }),
         "2026-01-01",
         "2026-04-30"
     );
     assert.equal(monthlyDates.join(","), ["2026-01-15", "2026-02-15", "2026-03-15", "2026-04-15"].join(","));
 
     const reverseWindowWeeklyDates = plugin.getTaskCalendarDates(
-        createTask({ repeat: "weekly", startDate: "2026-03-31T09:00", dueDate: "2026-03-02T18:00" }),
+        createTask({ repeat: "weekly", startDate: "2026-03-31", dueDate: "2026-03-02" }),
         "2026-03-01",
         "2026-03-31"
     );
@@ -93,8 +95,10 @@ function run() {
     const noteTask = createTask({
         id: "task-note",
         repeat: "none",
-        startDate: "2026-03-04T09:00",
-        dueDate: "2026-03-04T18:00"
+        startDate: "2026-03-04",
+        dueDate: "2026-03-04",
+        startTime: "09:00",
+        dueTime: "18:00"
     });
     plugin.state.tasks = [noteTask];
     plugin.state.occurrenceNotes[plugin.getOccurrenceKey(noteTask.id, "2026-03-04")] = "测试备注提示";
@@ -125,6 +129,7 @@ function run() {
     assert.equal(dayHtml.includes('class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger"'), true);
     assert.equal(dayHtml.includes('aria-label="测试备注提示"'), true);
     assert.equal(dayHtml.includes("星期三 · 2026-03-04"), true);
+    assert.equal(dayHtml.includes("09:00-18:00"), true);
 
     plugin.ui.calendarMode = "month";
     plugin.isMobile = true;

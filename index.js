@@ -36,7 +36,8 @@
         { value: "kanban", label: "看板", icon: "iconLayoutRight" },
         { value: "calendar", label: "日历", icon: "iconCalendar" },
         { value: "gantt", label: "甘特图", icon: "iconSort" },
-        { value: "timeline", label: "时间轴", icon: "iconHistory" }
+        { value: "timeline", label: "时间轴", icon: "iconHistory" },
+        { value: "settings", label: "设置", icon: "iconSettings" }
     ];
 
     class SiYuanTaskSuitePlugin extends Plugin {
@@ -52,14 +53,12 @@
                 timelineEnd: "",
                 calendarMode: "month",
                 calendarCursor: this.formatDate(new Date()),
-                calendarMonthHeight: 70,
                 ganttStart: "",
                 ganttEnd: "",
                 kanbanDropTaskId: ""
             };
             await this.loadState();
             this.normalizeState();
-            this.ui.calendarMonthHeight = this.state.settings.calendarMonthHeight;
             this.startReminderLoop();
             const plugin = this;
             this.addTab({
@@ -153,7 +152,8 @@
                 occurrenceNotes: {},
                 reminderFired: {},
                 settings: {
-                    calendarMonthHeight: 70,
+                    calendarMonthHeightDesktop: 80,
+                    calendarMonthHeightMobile: 50,
                     themeMode: "light"
                 },
                 boardColumns: [
@@ -407,7 +407,9 @@
                 ...this.createDefaultState().settings,
                 ...this.state.settings
             };
-            this.state.settings.calendarMonthHeight = this.normalizeCalendarMonthHeight(this.state.settings.calendarMonthHeight);
+            const legacyMonthHeight = this.normalizeCalendarMonthHeight(this.state.settings.calendarMonthHeight, 80);
+            this.state.settings.calendarMonthHeightDesktop = this.normalizeCalendarMonthHeight(this.state.settings.calendarMonthHeightDesktop, legacyMonthHeight);
+            this.state.settings.calendarMonthHeightMobile = this.normalizeCalendarMonthHeight(this.state.settings.calendarMonthHeightMobile, 50);
             this.state.settings.themeMode = this.normalizeThemeMode(this.state.settings.themeMode);
             this.state.boardColumns = this.createDefaultState().boardColumns.map((item) => ({ ...item }));
             const knownIds = new Set(this.state.tasks.map((task) => task.id));
@@ -487,13 +489,12 @@
             return `${`${hour}`.padStart(2, "0")}:${`${minute}`.padStart(2, "0")}`;
         }
 
-        normalizeCalendarMonthHeight(value) {
+        normalizeCalendarMonthHeight(value, fallback = 80) {
             const parsed = Number(value);
-            const options = [50, 60, 70, 80];
-            if (options.includes(parsed)) {
-                return parsed;
+            if (Number.isFinite(parsed)) {
+                return Math.max(30, Math.min(120, Math.round(parsed)));
             }
-            return 70;
+            return fallback;
         }
 
         normalizeThemeMode(value) {
@@ -959,10 +960,15 @@
                 this.renderApp();
                 return;
             }
-            if (target.dataset.filter === "calendar-month-height") {
-                const next = this.normalizeCalendarMonthHeight(target.value);
-                this.ui.calendarMonthHeight = next;
-                this.state.settings.calendarMonthHeight = next;
+            if (target.dataset.filter === "settings-calendar-month-height-desktop") {
+                this.state.settings.calendarMonthHeightDesktop = this.normalizeCalendarMonthHeight(target.value, 80);
+                this.markSettingsDirty();
+                this.saveState();
+                this.renderApp();
+                return;
+            }
+            if (target.dataset.filter === "settings-calendar-month-height-mobile") {
+                this.state.settings.calendarMonthHeightMobile = this.normalizeCalendarMonthHeight(target.value, 50);
                 this.markSettingsDirty();
                 this.saveState();
                 this.renderApp();
@@ -1063,6 +1069,8 @@
                 html = this.renderCalendarView();
             } else if (this.ui.activeTab === "gantt") {
                 html = this.renderGanttView();
+            } else if (this.ui.activeTab === "settings") {
+                html = this.renderSettingsView();
             }
             contentHost.innerHTML = html;
         }
@@ -1255,15 +1263,17 @@
             const mode = this.ui.calendarMode || "month";
             const cursor = this.parseDate(this.ui.calendarCursor) || new Date();
             const range = this.getCalendarRange(mode, cursor);
-            const monthHeight = this.normalizeCalendarMonthHeight(this.ui.calendarMonthHeight || this.state.settings.calendarMonthHeight);
+            const monthHeight = this.getCalendarMonthHeight();
             const allOccurrences = this.getOccurrencesForRange(range.start, range.end);
             const mapByDay = new Map();
+            const occurrenceKeySet = new Set();
             allOccurrences.forEach((item) => {
                 const key = item.date;
                 if (!mapByDay.has(key)) {
                     mapByDay.set(key, []);
                 }
                 mapByDay.get(key).push(item);
+                occurrenceKeySet.add(`${item.date}::${item.task.id}`);
             });
             const modeTabs = [
                 { mode: "month", label: `月 · ${cursor.getMonth() + 1}月` },
@@ -1298,13 +1308,7 @@
                                 ${modeTabsHtml}
                             </div>
                             <div class="task-suite-meta">
-                                展示区间: ${range.start} 至 ${range.end}
-                            </div>
-                            <div class="task-suite-meta">
-                                <span>月视图密度</span>
-                                <select class="b3-select" data-filter="calendar-month-height">
-                                    ${[50, 60, 70, 80].map((item) => `<option value="${item}" ${monthHeight === item ? "selected" : ""}>${item}vh</option>`).join("")}
-                                </select>
+                                ${this.renderCalendarLegend()}
                             </div>
                         </div>
                         <div class="task-suite-card">
@@ -1330,14 +1334,8 @@
                             ${modeTabsHtml}
                         </div>
                         <div class="task-suite-meta">
-                            展示区间: ${range.start} 至 ${range.end}
+                            ${this.renderCalendarLegend()}
                         </div>
-                            <div class="task-suite-meta">
-                                <span>月视图密度</span>
-                                <select class="b3-select" data-filter="calendar-month-height">
-                                    ${[50, 60, 70, 80].map((item) => `<option value="${item}" ${monthHeight === item ? "selected" : ""}>${item}vh</option>`).join("")}
-                                </select>
-                            </div>
                     </div>
                     ${showWeekdayHeader ? `
                     <div class="task-suite-calendar-weekdays">
@@ -1365,29 +1363,26 @@
                                                 const statusClass = this.getStatusClass(occurrenceStatus);
                                                 const note = this.getOccurrenceNote(item.task, day.date);
                                                 const noteBadge = note ? `<span class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger" tabindex="0" aria-label="${this.escapeHtml(note)}">备注</span>` : "";
-                                                const repeatBadge = item.task.repeat !== "none" ? `<span class="task-suite-calendar-repeat-badge" title="重复规则：${this.getRepeatLabel(item.task.repeat)}">${this.getRepeatLabel(item.task.repeat)}</span>` : "";
+                                                const repeatClass = this.getRepeatClass(item.task.repeat);
+                                                const spanClass = this.getCalendarSpanClass(item.task.id, day.date, occurrenceKeySet);
                                                 return mode === "month" ? `
-                                                    <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
+                                                    <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass} ${repeatClass} ${spanClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
                                                         <div class="task-suite-calendar-task-line">
                                                             <div class="task-suite-calendar-task-text">
-                                                                ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
                                                                 ${this.escapeHtml(item.task.title)}
                                                             </div>
-                                                            ${repeatBadge}
                                                             ${noteBadge}
                                                             <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
                                                         </div>
                                                     </div>
                                                 ` : `
-                                                    <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
+                                                    <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass} ${repeatClass} ${spanClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
                                                         <div class="task-suite-calendar-task-head">
                                                             <span class="task-suite-calendar-status ${statusClass}" title="${this.getStatusLabel(occurrenceStatus)}">${this.getStatusLabel(occurrenceStatus)}</span>
-                                                            ${repeatBadge}
                                                             ${noteBadge}
                                                             <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
                                                         </div>
                                                         <div>
-                                                            ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
                                                             ${this.escapeHtml(item.task.title)}
                                                         </div>
                                                     </div>
@@ -1399,12 +1394,12 @@
                             }).join("")}
                         </div>
                     </div>
-                    ${isMobileMonthView ? this.renderMobileMonthTaskList(range.days, mapByDay) : ""}
+                    ${isMobileMonthView ? this.renderMobileMonthTaskList(range.days, mapByDay, occurrenceKeySet) : ""}
                 </div>
             `;
         }
 
-        renderMobileMonthTaskList(days, mapByDay) {
+        renderMobileMonthTaskList(days, mapByDay, occurrenceKeySet) {
             const dayBlocks = days.map((day) => {
                 if (day.dimmed) {
                     return "";
@@ -1428,15 +1423,14 @@
                                 const statusClass = this.getStatusClass(occurrenceStatus);
                                 const note = this.getOccurrenceNote(item.task, day.date);
                                 const noteBadge = note ? `<span class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger" tabindex="0" aria-label="${this.escapeHtml(note)}">备注</span>` : "";
-                                const repeatBadge = item.task.repeat !== "none" ? `<span class="task-suite-calendar-repeat-badge" title="重复规则：${this.getRepeatLabel(item.task.repeat)}">${this.getRepeatLabel(item.task.repeat)}</span>` : "";
+                                const repeatClass = this.getRepeatClass(item.task.repeat);
+                                const spanClass = this.getCalendarSpanClass(item.task.id, day.date, occurrenceKeySet);
                                 return `
-                                    <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
+                                    <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass} ${repeatClass} ${spanClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
                                         <div class="task-suite-calendar-task-line">
                                             <div class="task-suite-calendar-task-text">
-                                                ${this.getCalendarTaskTimeLabel(item.task, day.date) ? `<span class="task-suite-task-time">${this.getCalendarTaskTimeLabel(item.task, day.date)}</span>` : ""}
                                                 ${this.escapeHtml(item.task.title)}
                                             </div>
-                                            ${repeatBadge}
                                             ${noteBadge}
                                             <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
                                         </div>
@@ -1457,6 +1451,95 @@
             return `
                 <div class="task-suite-card task-suite-calendar-mobile-month-list">
                     <div class="task-suite-calendar-mobile-month-tasks">${dayBlocks}</div>
+                </div>
+            `;
+        }
+
+        getCalendarMonthHeight() {
+            if (this.isMobile) {
+                return this.normalizeCalendarMonthHeight(this.state.settings.calendarMonthHeightMobile, 50);
+            }
+            return this.normalizeCalendarMonthHeight(this.state.settings.calendarMonthHeightDesktop, 80);
+        }
+
+        getRepeatClass(repeat) {
+            const normalized = this.normalizeRepeat(repeat);
+            if (normalized === "none") {
+                return "";
+            }
+            return `repeat-${normalized}`;
+        }
+
+        getCalendarSpanClass(taskId, day, occurrenceKeySet) {
+            if (!taskId || !day || !occurrenceKeySet) {
+                return "";
+            }
+            const prevDay = this.formatDate(this.addDays(day, -1));
+            const nextDay = this.formatDate(this.addDays(day, 1));
+            const hasPrev = occurrenceKeySet.has(`${prevDay}::${taskId}`);
+            const hasNext = occurrenceKeySet.has(`${nextDay}::${taskId}`);
+            if (hasPrev && hasNext) {
+                return "task-suite-calendar-span-middle";
+            }
+            if (hasPrev) {
+                return "task-suite-calendar-span-end";
+            }
+            if (hasNext) {
+                return "task-suite-calendar-span-start";
+            }
+            return "task-suite-calendar-span-single";
+        }
+
+        renderCalendarLegend() {
+            return `
+                <span class="task-suite-calendar-legend">
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-priority-low">优先级低</span>
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-priority-medium">优先级中</span>
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-priority-high">优先级高</span>
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-priority-urgent">优先级紧急</span>
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-status-todo">待办</span>
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-status-in-progress">进行中</span>
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-status-done">完成</span>
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-status-blocked">受阻</span>
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-repeat-daily">每日</span>
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-repeat-weekly">每周</span>
+                    <span class="task-suite-calendar-legend-item task-suite-calendar-legend-repeat-monthly">每月</span>
+                </span>
+            `;
+        }
+
+        renderSettingsView() {
+            const desktopHeight = this.normalizeCalendarMonthHeight(this.state.settings.calendarMonthHeightDesktop, 80);
+            const mobileHeight = this.normalizeCalendarMonthHeight(this.state.settings.calendarMonthHeightMobile, 50);
+            return `
+                <div class="task-suite-list">
+                    <div class="task-suite-card">
+                        <strong>日历设置</strong>
+                        <div class="task-suite-meta" style="margin-top: 8px;">
+                            月视图高度已独立配置：桌面端默认 80vh，手机端默认 50vh。
+                        </div>
+                        <div class="fn__flex" style="gap: 12px; flex-wrap: wrap; margin-top: 10px;">
+                            <label class="fn__flex" style="gap: 8px; align-items: center;">
+                                <span>桌面月视图高度</span>
+                                <input class="b3-text-field" type="number" min="30" max="120" step="1" data-filter="settings-calendar-month-height-desktop" value="${desktopHeight}">
+                                <span>vh</span>
+                            </label>
+                            <label class="fn__flex" style="gap: 8px; align-items: center;">
+                                <span>手机月视图高度</span>
+                                <input class="b3-text-field" type="number" min="30" max="120" step="1" data-filter="settings-calendar-month-height-mobile" value="${mobileHeight}">
+                                <span>vh</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="task-suite-card">
+                        <strong>颜色说明</strong>
+                        <div class="task-suite-meta" style="margin-top: 8px;">
+                            任务左侧颜色代表优先级，任务底色代表状态，任务右侧颜色代表重复规则（一次任务不显示右侧颜色）。
+                        </div>
+                        <div class="task-suite-meta" style="margin-top: 8px;">
+                            ${this.renderCalendarLegend()}
+                        </div>
+                    </div>
                 </div>
             `;
         }
@@ -2204,11 +2287,7 @@
             const windowEnd = startDate <= dueDate ? dueDate : startDate;
             const result = [];
             if (repeat === "none") {
-                const day = this.formatDate(windowStart);
-                if (day >= startDateString && day <= endDateString) {
-                    result.push(day);
-                }
-                return result;
+                return this.getTaskSpanDates(task, startDateString, endDateString);
             }
             let current = new Date(windowStart);
             const hardLimit = 520;
@@ -2459,6 +2538,10 @@
         }
 
         getCalendarTaskTimeLabel(task, day) {
+            const mode = this.ui.calendarMode;
+            if (mode === "month" || mode === "week") {
+                return "";
+            }
             const dateTime = this.getCalendarTaskDateTime(task, day);
             if (dateTime) {
                 return `${`${dateTime.getHours()}`.padStart(2, "0")}:${`${dateTime.getMinutes()}`.padStart(2, "0")}`;
@@ -2527,43 +2610,108 @@
             return `${range.start}-${range.end}`;
         }
 
+        timeToMinutes(value) {
+            const normalized = String(value || "").trim();
+            if (!normalized) {
+                return 0;
+            }
+            if (normalized === "24:00") {
+                return 24 * 60;
+            }
+            const matched = normalized.match(/^(\d{1,2}):(\d{1,2})$/);
+            if (!matched) {
+                return 0;
+            }
+            const hour = Math.max(0, Math.min(24, Number(matched[1])));
+            const minute = Math.max(0, Math.min(59, Number(matched[2])));
+            if (hour === 24) {
+                return 24 * 60;
+            }
+            return hour * 60 + minute;
+        }
+
         renderCalendarDayTimeline(day, tasks) {
-            const groups = new Map();
-            tasks.forEach((item) => {
-                const dateTime = this.getCalendarTaskDateTime(item.task, day);
-                const hour = dateTime ? dateTime.getHours() : 0;
-                const safeHour = Math.max(0, Math.min(24, hour));
-                if (!groups.has(safeHour)) {
-                    groups.set(safeHour, []);
-                }
-                groups.get(safeHour).push(item);
-            });
-            const rows = Array.from(groups.entries())
-                .sort((a, b) => a[0] - b[0])
-                .map(([hour, hourTasks]) => `
-                    <div class="task-suite-day-hour-row">
-                        <div class="task-suite-day-hour-label">${`${hour}`.padStart(2, "0")}:00</div>
-                        <div class="task-suite-day-hour-content">
-                            ${hourTasks.map((item) => {
-                                const occurrenceStatus = this.getOccurrenceStatus(item.task, day);
-                                const statusClass = this.getStatusClass(occurrenceStatus);
-                                const note = this.getOccurrenceNote(item.task, day);
-                                const noteBadge = note ? `<span class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger" tabindex="0" aria-label="${this.escapeHtml(note)}">备注</span>` : "";
-                                const repeatBadge = item.task.repeat !== "none" ? `<span class="task-suite-calendar-repeat-badge" title="重复规则：${this.getRepeatLabel(item.task.repeat)}">${this.getRepeatLabel(item.task.repeat)}</span>` : "";
-                                return `
-                                    <div class="task-suite-day-event ${this.getPriorityClass(item.task.priority)} ${statusClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day}">
+            const totalMinutes = 24 * 60;
+            const now = new Date();
+            const nowMinutes = now.getHours() * 60 + now.getMinutes();
+            const isToday = day === this.formatDate(now);
+            const nowLine = isToday ? `
+                <div class="task-suite-day-now-line" style="left:${(nowMinutes / totalMinutes) * 100}%;">
+                    <span class="task-suite-day-now-label">${`${now.getHours()}`.padStart(2, "0")}:${`${now.getMinutes()}`.padStart(2, "0")}</span>
+                </div>
+            ` : "";
+            const tickMarks = Array.from({ length: 25 }, (_, hour) => {
+                const leftPercent = (hour / 24) * 100;
+                return `
+                    <span class="task-suite-day-axis-tick" style="left:${leftPercent}%;">
+                        <span class="task-suite-day-axis-tick-line"></span>
+                        <span class="task-suite-day-axis-tick-label">${`${hour}`.padStart(2, "0")}:00</span>
+                    </span>
+                `;
+            }).join("");
+            const rowsHtml = tasks
+                .map((item) => {
+                    const range = this.getTaskDayTimeRange(item.task, day);
+                    if (!range) {
+                        return null;
+                    }
+                    let startMinutes = this.timeToMinutes(range.start);
+                    let endMinutes = this.timeToMinutes(range.end);
+                    if (endMinutes <= startMinutes) {
+                        endMinutes = Math.min(totalMinutes, startMinutes + 30);
+                    }
+                    if (startMinutes < 0 || startMinutes >= totalMinutes) {
+                        startMinutes = Math.max(0, Math.min(totalMinutes - 1, startMinutes));
+                    }
+                    endMinutes = Math.max(startMinutes + 15, Math.min(totalMinutes, endMinutes));
+                    const occurrenceStatus = this.getOccurrenceStatus(item.task, day);
+                    const statusClass = this.getStatusClass(occurrenceStatus);
+                    const note = this.getOccurrenceNote(item.task, day);
+                    const noteBadge = note ? `<span class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger" tabindex="0" aria-label="${this.escapeHtml(note)}">备注</span>` : "";
+                    const repeatClass = this.getRepeatClass(item.task.repeat);
+                    const leftPercent = (startMinutes / totalMinutes) * 100;
+                    const widthPercent = ((endMinutes - startMinutes) / totalMinutes) * 100;
+                    return {
+                        title: item.task.title,
+                        startMinutes,
+                        html: `
+                            <div class="task-suite-day-task-row">
+                                <div class="task-suite-day-task-track">
+                                    <div
+                                        class="task-suite-day-event-segment ${this.getPriorityClass(item.task.priority)} ${statusClass}"
+                                        style="left:${leftPercent}%;width:${Math.max(1, widthPercent)}%;"
+                                    ></div>
+                                    <div
+                                        class="task-suite-day-event task-suite-day-event-horizontal task-suite-day-event-full ${this.getPriorityClass(item.task.priority)} ${statusClass} ${repeatClass}"
+                                        data-action="open-calendar-task-editor"
+                                        data-task-id="${item.task.id}"
+                                        data-date="${day}"
+                                    >
                                         <span class="task-suite-calendar-status ${statusClass}" title="${this.getStatusLabel(occurrenceStatus)}">${this.getStatusLabel(occurrenceStatus)}</span>
-                                        <span class="task-suite-day-event-title">${this.getCalendarTaskRangeLabel(item.task, day) ? `${this.getCalendarTaskRangeLabel(item.task, day)} ` : ""}${this.escapeHtml(item.task.title)}</span>
-                                        ${repeatBadge}
+                                        <span class="task-suite-day-event-title">${this.getCalendarTaskRangeLabel(item.task, day)} ${this.escapeHtml(item.task.title)}</span>
                                         ${noteBadge}
                                         <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
                                     </div>
-                                `;
-                            }).join("")}
-                        </div>
+                                </div>
+                            </div>
+                        `
+                    };
+                })
+                .filter(Boolean)
+                .sort((a, b) => a.startMinutes - b.startMinutes || a.title.localeCompare(b.title))
+                .map((item) => item.html)
+                .join("");
+            return `
+                <div class="task-suite-day-timeline task-suite-day-timeline--horizontal">
+                    <div class="task-suite-day-time-axis">
+                        <div class="task-suite-day-axis-track">${tickMarks}</div>
                     </div>
-                `);
-            return `<div class="task-suite-day-timeline">${rows.join("")}</div>`;
+                    <div class="task-suite-day-rows">
+                        ${nowLine}
+                        ${rowsHtml}
+                    </div>
+                </div>
+            `;
         }
 
         getLunarLabel(dateString) {

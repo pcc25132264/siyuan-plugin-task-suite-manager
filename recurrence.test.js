@@ -62,7 +62,11 @@ function run() {
         "2026-03-01",
         "2026-03-31"
     );
-    assert.equal(oneTimeDates.join(","), ["2026-03-04"].join(","));
+    assert.equal(oneTimeDates.join(","), [
+        "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07", "2026-03-08", "2026-03-09",
+        "2026-03-10", "2026-03-11", "2026-03-12", "2026-03-13", "2026-03-14", "2026-03-15",
+        "2026-03-16", "2026-03-17", "2026-03-18", "2026-03-19", "2026-03-20"
+    ].join(","));
 
     const dailyDates = plugin.getTaskCalendarDates(
         createTask({ repeat: "daily", startDate: "2026-03-01", dueDate: "2026-03-05" }),
@@ -106,7 +110,7 @@ function run() {
     const monthHtml = plugin.renderCalendarView();
     assert.equal(monthHtml.includes('class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger"'), true);
     assert.equal(monthHtml.includes('aria-label="测试备注提示"'), true);
-    assert.equal(monthHtml.includes("50vh"), true);
+    assert.equal(monthHtml.includes("80vh"), true);
     assert.equal(monthHtml.includes("月 · 3月"), true);
     assert.equal(monthHtml.includes("周 · 第10周"), true);
     assert.equal(monthHtml.includes("日 · 4号"), true);
@@ -151,9 +155,10 @@ function run() {
     assert.equal(source.includes("getOrCreateNoteTooltip()"), true);
     assert.equal(source.includes('getWeekdayNames(mode = "full")'), true);
     assert.equal(source.includes("getWeekdayName(dateValue)"), true);
-    assert.equal(source.includes("const options = [50, 60, 70, 80];"), true);
+    assert.equal(source.includes("normalizeCalendarMonthHeight(value, fallback = 80)"), true);
+    assert.equal(source.includes("task-suite-day-now-line"), true);
     assert.equal(source.includes("showWeekdayHeader = !(this.isMobile && mode === \"week\")"), true);
-    assert.equal(source.includes("renderMobileMonthTaskList(days, mapByDay)"), true);
+    assert.equal(source.includes("renderMobileMonthTaskList(days, mapByDay, occurrenceKeySet)"), true);
     assert.equal(source.includes('tooltip.style.whiteSpace = "pre-wrap";'), true);
     assert.equal(source.includes('tooltip.style.overflowWrap = "anywhere";'), true);
     assert.equal(source.includes("<style>"), false);

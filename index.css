@@ -450,7 +450,7 @@
     border-radius: 0;
     overflow: visible;
     grid-template-rows: repeat(6, minmax(0, 1fr));
-    height: var(--task-suite-month-height, 70vh);
+    height: var(--task-suite-month-height, 80vh);
     min-height: 520px;
     margin-top: 0;
     background: var(--task-suite-surface);
@@ -633,6 +633,7 @@
 .task-suite-calendar-task {
     font-size: 12px;
     border-left: 4px solid var(--b3-theme-primary);
+    border-right: 3px solid transparent;
     background: var(--task-suite-item-bg);
     color: var(--task-suite-item-text);
     padding: 2px 6px;
@@ -716,6 +717,33 @@
 .task-suite-calendar-task.priority-urgent {
     border-left-color: color-mix(in srgb, var(--b3-card-error-color) 92%, var(--task-suite-line));
 }
+.task-suite-calendar-task.repeat-daily,
+.task-suite-day-event-horizontal.repeat-daily {
+    border-right-color: color-mix(in srgb, #2f9e44 85%, var(--task-suite-line));
+}
+.task-suite-calendar-task.repeat-weekly,
+.task-suite-day-event-horizontal.repeat-weekly {
+    border-right-color: color-mix(in srgb, #1c7ed6 85%, var(--task-suite-line));
+}
+.task-suite-calendar-task.repeat-monthly,
+.task-suite-day-event-horizontal.repeat-monthly {
+    border-right-color: color-mix(in srgb, #9c36b5 85%, var(--task-suite-line));
+}
+.task-suite-calendar-span-start {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-right: -6px;
+}
+.task-suite-calendar-span-middle {
+    border-radius: 0;
+    margin-left: -6px;
+    margin-right: -6px;
+}
+.task-suite-calendar-span-end {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    margin-left: -6px;
+}
 .task-suite-task-time {
     font-size: 11px;
     color: var(--task-suite-text-soft);
@@ -724,27 +752,225 @@
 .task-suite-day-timeline {
     border: 1px solid var(--task-suite-border);
     border-radius: 8px;
-    overflow: visible;
+    overflow: hidden;
     background: var(--task-suite-surface);
     position: relative;
 }
-.task-suite-day-hour-row {
-    display: grid;
-    grid-template-columns: 64px 1fr;
+.task-suite-day-timeline--horizontal {
+    display: flex;
+    flex-direction: column;
+}
+.task-suite-day-time-axis {
+    background: var(--task-suite-muted);
+    border-bottom: 1px solid var(--task-suite-border);
+    padding: 0 12px;
+}
+.task-suite-day-axis-track {
+    position: relative;
+    height: 32px;
+}
+.task-suite-day-axis-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+.task-suite-day-axis-tick-line {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid var(--task-suite-border);
+}
+.task-suite-day-axis-tick-label {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--task-suite-text-soft);
+    white-space: nowrap;
+}
+.task-suite-day-rows {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+.task-suite-day-task-row {
+    display: block;
+    padding: 8px 12px;
     border-top: 1px solid var(--task-suite-border);
-    min-height: 34px;
+    align-items: center;
+}
+.task-suite-day-task-row:first-child {
+    border-top: none;
+}
+.task-suite-day-task-track {
+    position: relative;
+    min-height: 38px;
+    background-image: linear-gradient(to right, var(--task-suite-border) 1px, transparent 1px);
+    background-size: calc(100% / 24) 100%;
+}
+.task-suite-day-event-segment {
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    z-index: 1;
+    border-radius: 4px;
+    border-left: 4px solid var(--task-suite-line);
+    background: color-mix(in srgb, var(--task-suite-chip-bg) 45%, transparent);
+    pointer-events: none;
+}
+.task-suite-day-event-segment.status-todo {
+    background: color-mix(in srgb, var(--b3-theme-primary-lighter) 40%, transparent);
+}
+.task-suite-day-event-segment.status-in-progress {
+    background: color-mix(in srgb, var(--b3-card-warning-background) 55%, transparent);
+}
+.task-suite-day-event-segment.status-done {
+    background: color-mix(in srgb, var(--b3-card-success-background) 45%, transparent);
+}
+.task-suite-day-event-segment.status-blocked {
+    background: color-mix(in srgb, var(--b3-card-error-background) 50%, transparent);
+}
+.task-suite-day-event-segment.priority-low {
+    border-left-color: color-mix(in srgb, var(--b3-card-info-color) 88%, var(--task-suite-line));
+}
+.task-suite-day-event-segment.priority-medium {
+    border-left-color: color-mix(in srgb, var(--task-suite-chip-text) 72%, var(--task-suite-line));
+}
+.task-suite-day-event-segment.priority-high {
+    border-left-color: color-mix(in srgb, var(--b3-card-warning-color) 92%, var(--task-suite-line));
+}
+.task-suite-day-event-segment.priority-urgent {
+    border-left-color: color-mix(in srgb, var(--b3-card-error-color) 92%, var(--task-suite-line));
+}
+.task-suite-day-event-horizontal {
+    position: relative;
+    z-index: 2;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.task-suite-day-event-full {
+    min-height: 32px;
+}
+.task-suite-day-now-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 2px solid color-mix(in srgb, var(--b3-theme-primary) 86%, #ff6b6b);
+    z-index: 4;
+    pointer-events: none;
+}
+.task-suite-day-now-label {
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    font-size: 10px;
+    padding: 0 4px;
+    border-radius: 999px;
+    color: var(--b3-theme-on-surface);
+    background: color-mix(in srgb, var(--b3-theme-primary) 80%, var(--task-suite-surface));
+    white-space: nowrap;
+}
+.task-suite-day-event-horizontal .task-suite-day-event-title {
+    white-space: normal;
     overflow: visible;
+    text-overflow: initial;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    flex: 1;
+    min-width: 0;
+}
+.task-suite-calendar-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.task-suite-calendar-legend-item {
+    display: inline-flex;
+    align-items: center;
+    min-height: 18px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 11px;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    background: color-mix(in srgb, var(--task-suite-muted) 58%, var(--task-suite-surface));
+}
+.task-suite-calendar-legend-priority-low {
+    border-left-color: color-mix(in srgb, var(--b3-card-info-color) 88%, var(--task-suite-line));
+}
+.task-suite-calendar-legend-priority-medium {
+    border-left-color: color-mix(in srgb, var(--task-suite-chip-text) 72%, var(--task-suite-line));
+}
+.task-suite-calendar-legend-priority-high {
+    border-left-color: color-mix(in srgb, var(--b3-card-warning-color) 92%, var(--task-suite-line));
+}
+.task-suite-calendar-legend-priority-urgent {
+    border-left-color: color-mix(in srgb, var(--b3-card-error-color) 92%, var(--task-suite-line));
+}
+.task-suite-calendar-legend-status-todo {
+    background: color-mix(in srgb, var(--b3-theme-primary-lighter) 48%, var(--task-suite-item-bg));
+}
+.task-suite-calendar-legend-status-in-progress {
+    background: color-mix(in srgb, var(--b3-card-warning-background) 70%, var(--task-suite-item-bg));
+}
+.task-suite-calendar-legend-status-done {
+    background: color-mix(in srgb, var(--b3-card-success-background) 58%, var(--task-suite-item-bg));
+}
+.task-suite-calendar-legend-status-blocked {
+    background: color-mix(in srgb, var(--b3-card-error-background) 62%, var(--task-suite-item-bg));
+}
+.task-suite-calendar-legend-repeat-daily {
+    border-right-color: color-mix(in srgb, #2f9e44 85%, var(--task-suite-line));
+}
+.task-suite-calendar-legend-repeat-weekly {
+    border-right-color: color-mix(in srgb, #1c7ed6 85%, var(--task-suite-line));
+}
+.task-suite-calendar-legend-repeat-monthly {
+    border-right-color: color-mix(in srgb, #9c36b5 85%, var(--task-suite-line));
+}
+.task-suite-day-hour-row {
+    border-top: 1px solid var(--task-suite-border);
+    height: 60px;
     position: relative;
 }
 .task-suite-day-hour-row:first-child {
     border-top: none;
 }
 .task-suite-day-hour-label {
-    padding: 6px 8px;
+    padding: 2px 8px;
     font-size: 12px;
     color: var(--task-suite-text-soft);
     background: var(--task-suite-muted);
     border-right: 1px solid var(--task-suite-border);
+    height: 100%;
+    box-sizing: border-box;
+}
+.task-suite-day-axis {
+    background: var(--task-suite-muted);
+    border-right: 1px solid var(--task-suite-border);
+}
+.task-suite-day-track {
+    position: relative;
+    background: var(--task-suite-surface);
+}
+.task-suite-day-grid-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px solid var(--task-suite-border);
+    z-index: 0;
+}
+.task-suite-day-grid-line:first-child {
+    border-top: none;
 }
 .task-suite-day-hour-content {
     padding: 4px 8px;
@@ -770,6 +996,28 @@
     position: relative;
     z-index: 1;
     overflow: visible;
+}
+.task-suite-day-event-block {
+    position: absolute;
+    z-index: 2;
+    overflow: hidden;
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 4px 6px;
+}
+.task-suite-day-event-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.task-suite-day-event-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
 }
 .task-suite-day-event:hover,
 .task-suite-day-event:focus-within {
@@ -806,9 +1054,9 @@
 .task-suite-day-event-title {
     min-width: 0;
     flex: 1;
-    white-space: nowrap;
+    white-space: normal;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
 }
 .task-suite-calendar-repeat-badge {
     min-height: 16px;
@@ -1081,7 +1329,7 @@
         min-width: 0;
     }
     .task-suite-calendar-grid--month {
-        height: var(--task-suite-month-height, 70vh);
+        height: var(--task-suite-month-height, 80vh);
         min-height: 420px;
         grid-template-rows: repeat(6, minmax(0, 1fr));
         grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -1139,5 +1387,9 @@
     }
     .task-suite-root.task-suite-mobile .task-suite-calendar-grid--month .task-suite-calendar-day-tasks {
         display: none;
+    }
+    .task-suite-root.task-suite-mobile .task-suite-calendar-grid--month {
+        height: var(--task-suite-month-height, 50vh);
+        min-height: 320px;
     }
 }

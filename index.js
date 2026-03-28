@@ -52,6 +52,7 @@
                 timelineStart: "",
                 timelineEnd: "",
                 calendarMode: "month",
+                calendarDayAxis: this.isMobile ? "vertical" : "horizontal",
                 calendarCursor: this.formatDate(new Date()),
                 ganttStart: "",
                 ganttEnd: "",
@@ -480,12 +481,18 @@
             if (!normalized) {
                 return "00:00";
             }
-            const matched = normalized.match(/^(\d{1,2}):(\d{1,2})/);
+            if (normalized === "24:00") {
+                return "24:00";
+            }
+            const matched = normalized.match(/^(\d{1,2}):(\d{1,2})$/);
             if (!matched) {
                 return "00:00";
             }
-            const hour = Math.max(0, Math.min(23, Number(matched[1])));
+            const hour = Math.max(0, Math.min(24, Number(matched[1])));
             const minute = Math.max(0, Math.min(59, Number(matched[2])));
+            if (hour === 24) {
+                return "24:00";
+            }
             return `${`${hour}`.padStart(2, "0")}:${`${minute}`.padStart(2, "0")}`;
         }
 
@@ -960,6 +967,11 @@
                 this.renderApp();
                 return;
             }
+            if (target.dataset.filter === "calendar-day-axis") {
+                this.ui.calendarDayAxis = this.normalizeCalendarDayAxis(target.value || "horizontal");
+                this.renderApp();
+                return;
+            }
             if (target.dataset.filter === "settings-calendar-month-height-desktop") {
                 this.state.settings.calendarMonthHeightDesktop = this.normalizeCalendarMonthHeight(target.value, 80);
                 this.markSettingsDirty();
@@ -1295,6 +1307,7 @@
             if (mode === "day") {
                 const day = range.days[0];
                 const tasks = mapByDay.get(day.date) || [];
+                const dayAxis = this.normalizeCalendarDayAxis(this.ui.calendarDayAxis);
                 return `
                     <div class="task-suite-list">
                         <div class="task-suite-card task-suite-calendar-header">
@@ -1311,12 +1324,21 @@
                                 ${this.renderCalendarLegend()}
                             </div>
                         </div>
-                        <div class="task-suite-card">
-                            <div class="fn__flex" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div class="task-suite-card task-suite-calendar-day-card">
+                            <div class="fn__flex" style="justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--task-suite-border);">
                                 <strong>${this.getWeekdayName(day.date)} · ${day.label}</strong>
-                                <button class="b3-button b3-button--outline" data-action="new-task-on-date" data-date="${day.date}">新增任务</button>
+                                <div class="fn__flex" style="align-items: center; gap: 8px;">
+                                    <span class="task-suite-meta" style="margin-right: 8px;">共 ${tasks.length} 项任务</span>
+                                    <select class="b3-select" data-filter="calendar-day-axis">
+                                        <option value="horizontal" ${dayAxis === "horizontal" ? "selected" : ""}>横轴</option>
+                                        <option value="vertical" ${dayAxis === "vertical" ? "selected" : ""}>竖轴</option>
+                                    </select>
+                                    <button class="b3-button b3-button--outline" data-action="new-task-on-date" data-date="${day.date}">新增任务</button>
+                                </div>
                             </div>
-                            ${tasks.length ? this.renderCalendarDayTimeline(day.date, tasks) : `<div class="task-suite-meta">当日暂无任务，时间轴会在有任务时显示。</div>`}
+                            <div class="task-suite-calendar-day-body task-suite-calendar-day-body--${dayAxis}">
+                                ${tasks.length ? this.renderCalendarDayTimeline(day.date, tasks, dayAxis) : `<div class="task-suite-meta" style="padding: 16px;">当日暂无任务，时间轴会在有任务时显示。</div>`}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1364,26 +1386,31 @@
                                                 const note = this.getOccurrenceNote(item.task, day.date);
                                                 const noteBadge = note ? `<span class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger" tabindex="0" aria-label="${this.escapeHtml(note)}">备注</span>` : "";
                                                 const repeatClass = this.getRepeatClass(item.task.repeat);
-                                                const spanClass = this.getCalendarSpanClass(item.task.id, day.date, occurrenceKeySet);
+                                                const spanClass = this.getCalendarSpanClass(item.task, day.date, occurrenceKeySet);
+                                                const showMainContent = this.shouldRenderCalendarTaskMainContent(item.task, day.date, occurrenceKeySet);
+                                                const repeatLabel = this.normalizeRepeat(item.task.repeat) !== "none" ? this.getRepeatLabel(item.task.repeat) : "";
                                                 return mode === "month" ? `
                                                     <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass} ${repeatClass} ${spanClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
                                                         <div class="task-suite-calendar-task-line">
-                                                            <div class="task-suite-calendar-task-text">
-                                                                ${this.escapeHtml(item.task.title)}
-                                                            </div>
-                                                            ${noteBadge}
-                                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
+                                                            ${showMainContent ? `
+                                                                <div class="task-suite-calendar-task-text task-suite-calendar-task-title">
+                                                                    ${this.escapeHtml(item.task.title)}
+                                                                </div>
+                                                                ${noteBadge}
+                                                                <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
+                                                            ` : `<div class="task-suite-calendar-span-filler"></div>`}
                                                         </div>
                                                     </div>
                                                 ` : `
                                                     <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass} ${repeatClass} ${spanClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
                                                         <div class="task-suite-calendar-task-head">
                                                             <span class="task-suite-calendar-status ${statusClass}" title="${this.getStatusLabel(occurrenceStatus)}">${this.getStatusLabel(occurrenceStatus)}</span>
-                                                            ${noteBadge}
-                                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
+                                                            ${mode === "week" && showMainContent && repeatLabel ? `<span class="task-suite-calendar-repeat-inline">${repeatLabel}</span>` : ""}
+                                                            ${showMainContent ? noteBadge : ""}
+                                                            ${showMainContent ? `<button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>` : ""}
                                                         </div>
-                                                        <div>
-                                                            ${this.escapeHtml(item.task.title)}
+                                                        <div class="task-suite-calendar-task-title">
+                                                            ${showMainContent ? this.escapeHtml(item.task.title) : ""}
                                                         </div>
                                                     </div>
                                                 `;
@@ -1424,15 +1451,18 @@
                                 const note = this.getOccurrenceNote(item.task, day.date);
                                 const noteBadge = note ? `<span class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger" tabindex="0" aria-label="${this.escapeHtml(note)}">备注</span>` : "";
                                 const repeatClass = this.getRepeatClass(item.task.repeat);
-                                const spanClass = this.getCalendarSpanClass(item.task.id, day.date, occurrenceKeySet);
+                                const spanClass = this.getCalendarSpanClass(item.task, day.date, occurrenceKeySet);
+                                const showMainContent = this.shouldRenderCalendarTaskMainContent(item.task, day.date, occurrenceKeySet);
                                 return `
                                     <div class="task-suite-calendar-task ${this.getPriorityClass(item.task.priority)} ${statusClass} ${repeatClass} ${spanClass}" data-action="open-calendar-task-editor" data-task-id="${item.task.id}" data-date="${day.date}">
                                         <div class="task-suite-calendar-task-line">
-                                            <div class="task-suite-calendar-task-text">
-                                                ${this.escapeHtml(item.task.title)}
-                                            </div>
-                                            ${noteBadge}
-                                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
+                                            ${showMainContent ? `
+                                                <div class="task-suite-calendar-task-text task-suite-calendar-task-title">
+                                                    ${this.escapeHtml(item.task.title)}
+                                                </div>
+                                                ${noteBadge}
+                                                <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day.date}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
+                                            ` : `<div class="task-suite-calendar-span-filler"></div>`}
                                         </div>
                                     </div>
                                 `;
@@ -1470,10 +1500,14 @@
             return `repeat-${normalized}`;
         }
 
-        getCalendarSpanClass(taskId, day, occurrenceKeySet) {
-            if (!taskId || !day || !occurrenceKeySet) {
+        getCalendarSpanClass(task, day, occurrenceKeySet) {
+            if (!task || !task.id || !day || !occurrenceKeySet) {
                 return "";
             }
+            if (this.normalizeRepeat(task.repeat) !== "none") {
+                return "task-suite-calendar-span-single";
+            }
+            const taskId = task.id;
             const prevDay = this.formatDate(this.addDays(day, -1));
             const nextDay = this.formatDate(this.addDays(day, 1));
             const hasPrev = occurrenceKeySet.has(`${prevDay}::${taskId}`);
@@ -1488,6 +1522,39 @@
                 return "task-suite-calendar-span-start";
             }
             return "task-suite-calendar-span-single";
+        }
+
+        shouldRenderCalendarTaskMainContent(task, day, occurrenceKeySet) {
+            if (!task || !task.id || !day || !occurrenceKeySet) {
+                return true;
+            }
+            if (this.normalizeRepeat(task.repeat) !== "none") {
+                return true;
+            }
+            const prevDay = this.formatDate(this.addDays(day, -1));
+            return !occurrenceKeySet.has(`${prevDay}::${task.id}`);
+        }
+
+        shouldRenderTaskInDayView(task, day) {
+            if (!task || !day) {
+                return false;
+            }
+            if (this.normalizeRepeat(task.repeat) !== "none") {
+                return true;
+            }
+            const startDate = this.toDateOnly(task.startDate) || this.toDateOnly(task.dueDate);
+            const dueDate = this.toDateOnly(task.dueDate) || this.toDateOnly(task.startDate);
+            if (!startDate || !dueDate) {
+                return true;
+            }
+            if (startDate === dueDate) {
+                return day === startDate;
+            }
+            return day === startDate || day === dueDate;
+        }
+
+        normalizeCalendarDayAxis(value) {
+            return value === "vertical" ? "vertical" : "horizontal";
         }
 
         renderCalendarLegend() {
@@ -1691,7 +1758,7 @@
                 startDate: presetDate || "",
                 dueDate: presetDate || "",
                 startTime: "00:00",
-                dueTime: "00:00",
+                dueTime: "24:00",
                 progress: 0,
                 resource: "",
                 tags: []
@@ -1738,7 +1805,7 @@
                                 </div>
                                 <div class="task-suite-field">
                                     <label>截止时间</label>
-                                    <input class="b3-text-field fn__block" type="time" name="dueTime" value="${this.escapeHtml(this.normalizeTimeInput(task.dueTime))}">
+                                    <input class="b3-text-field fn__block" type="time" name="dueTime" value="${this.escapeHtml(this.normalizeTimeInput(task.dueTime === "24:00" ? "23:59" : task.dueTime))}">
                                 </div>
                                 <div class="task-suite-field">
                                     <label>提醒时间</label>
@@ -1950,6 +2017,7 @@
             const dependencies = Array.from(form.querySelectorAll("input[name='dependencies']:checked"))
                 .map((input) => input.value)
                 .filter((id) => id && id !== taskId);
+            const dueTimeRaw = (formData.get("dueTime") || "").toString().trim();
             const payload = {
                 title,
                 description: (formData.get("description") || "").toString().trim(),
@@ -1959,7 +2027,7 @@
                 startDate: this.normalizeDateInput((formData.get("startDate") || "").toString()),
                 dueDate: this.normalizeDateInput((formData.get("dueDate") || "").toString()),
                 startTime: this.normalizeTimeInput((formData.get("startTime") || "").toString()),
-                dueTime: this.normalizeTimeInput((formData.get("dueTime") || "").toString()),
+                dueTime: this.normalizeTimeInput(dueTimeRaw || "24:00"),
                 reminderTime: this.normalizeDateTimeInput((formData.get("reminderTime") || "").toString()),
                 progress: this.normalizeProgress((formData.get("progress") || "").toString()),
                 resource: "",
@@ -2287,7 +2355,15 @@
             const windowEnd = startDate <= dueDate ? dueDate : startDate;
             const result = [];
             if (repeat === "none") {
-                return this.getTaskSpanDates(task, startDateString, endDateString);
+                const startBoundary = this.formatDate(windowStart);
+                const endBoundary = this.formatDate(windowEnd);
+                if (startBoundary >= startDateString && startBoundary <= endDateString) {
+                    result.push(startBoundary);
+                }
+                if (endBoundary !== startBoundary && endBoundary >= startDateString && endBoundary <= endDateString) {
+                    result.push(endBoundary);
+                }
+                return result;
             }
             let current = new Date(windowStart);
             const hardLimit = 520;
@@ -2630,7 +2706,8 @@
             return hour * 60 + minute;
         }
 
-        renderCalendarDayTimeline(day, tasks) {
+        renderCalendarDayTimeline(day, tasks, axisMode) {
+            const normalizedAxis = this.normalizeCalendarDayAxis(axisMode || this.ui.calendarDayAxis);
             const totalMinutes = 24 * 60;
             const now = new Date();
             const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -2640,7 +2717,9 @@
                     <span class="task-suite-day-now-label">${`${now.getHours()}`.padStart(2, "0")}:${`${now.getMinutes()}`.padStart(2, "0")}</span>
                 </div>
             ` : "";
-            const tickMarks = Array.from({ length: 25 }, (_, hour) => {
+            const horizontalTickStep = this.isMobile ? 4 : 1;
+            const tickHours = Array.from({ length: 25 }, (_, hour) => hour).filter((hour) => hour % horizontalTickStep === 0);
+            const tickMarks = tickHours.map((hour) => {
                 const leftPercent = (hour / 24) * 100;
                 return `
                     <span class="task-suite-day-axis-tick" style="left:${leftPercent}%;">
@@ -2649,7 +2728,8 @@
                     </span>
                 `;
             }).join("");
-            const rowsHtml = tasks
+            const timelineItems = tasks
+                .filter((item) => this.shouldRenderTaskInDayView(item.task, day))
                 .map((item) => {
                     const range = this.getTaskDayTimeRange(item.task, day);
                     if (!range) {
@@ -2669,25 +2749,43 @@
                     const note = this.getOccurrenceNote(item.task, day);
                     const noteBadge = note ? `<span class="task-suite-calendar-note-badge task-suite-note-tooltip-trigger" tabindex="0" aria-label="${this.escapeHtml(note)}">备注</span>` : "";
                     const repeatClass = this.getRepeatClass(item.task.repeat);
+                    const repeatLabel = this.normalizeRepeat(item.task.repeat) !== "none" ? this.getRepeatLabel(item.task.repeat) : "";
                     const leftPercent = (startMinutes / totalMinutes) * 100;
                     const widthPercent = ((endMinutes - startMinutes) / totalMinutes) * 100;
+                    const minTextWidthPercent = 48;
+                    const textStartPercent = Math.min(leftPercent, Math.max(0, 100 - minTextWidthPercent));
                     return {
+                        id: item.task.id,
                         title: item.task.title,
+                        rangeLabel: this.getCalendarTaskRangeLabel(item.task, day),
                         startMinutes,
+                        endMinutes,
+                        repeatLabel,
+                        repeatClass,
+                        statusClass,
+                        statusLabel: this.getStatusLabel(occurrenceStatus),
+                        priorityClass: this.getPriorityClass(item.task.priority),
+                        noteBadge,
+                        leftPercent,
+                        widthPercent,
+                        textStartPercent,
                         html: `
                             <div class="task-suite-day-task-row">
                                 <div class="task-suite-day-task-track">
                                     <div
-                                        class="task-suite-day-event-segment ${this.getPriorityClass(item.task.priority)} ${statusClass}"
+                                        class="task-suite-day-event-segment ${this.getPriorityClass(item.task.priority)} ${statusClass} ${repeatClass}"
                                         style="left:${leftPercent}%;width:${Math.max(1, widthPercent)}%;"
                                     ></div>
+                                    <div class="task-suite-day-spacer" style="width: ${leftPercent}%; flex-shrink: 1; min-width: 0;"></div>
                                     <div
-                                        class="task-suite-day-event task-suite-day-event-horizontal task-suite-day-event-full ${this.getPriorityClass(item.task.priority)} ${statusClass} ${repeatClass}"
+                                        class="task-suite-day-event task-suite-day-event-horizontal task-suite-day-event-full ${this.getPriorityClass(item.task.priority)} ${statusClass}"
                                         data-action="open-calendar-task-editor"
                                         data-task-id="${item.task.id}"
                                         data-date="${day}"
+                                        style="flex-shrink: 0; max-width: 100%;"
                                     >
                                         <span class="task-suite-calendar-status ${statusClass}" title="${this.getStatusLabel(occurrenceStatus)}">${this.getStatusLabel(occurrenceStatus)}</span>
+                                        ${repeatLabel ? `<span class="task-suite-calendar-repeat-inline">${repeatLabel}</span>` : ""}
                                         <span class="task-suite-day-event-title">${this.getCalendarTaskRangeLabel(item.task, day)} ${this.escapeHtml(item.task.title)}</span>
                                         ${noteBadge}
                                         <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.task.id}" data-date="${day}">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
@@ -2698,9 +2796,79 @@
                     };
                 })
                 .filter(Boolean)
-                .sort((a, b) => a.startMinutes - b.startMinutes || a.title.localeCompare(b.title))
-                .map((item) => item.html)
-                .join("");
+                .sort((a, b) => a.startMinutes - b.startMinutes || a.title.localeCompare(b.title));
+            const rowsHtml = timelineItems.map((item) => item.html).join("");
+            if (normalizedAxis === "vertical") {
+                const ITEM_WIDTH = this.isMobile ? 88 : 100;
+                
+                // Calculate columns to avoid overlapping
+                const sortedVerticalItems = [...timelineItems].sort((a, b) => a.startMinutes - b.startMinutes || (b.endMinutes - b.startMinutes) - (a.endMinutes - a.startMinutes));
+                const columns = [];
+                let maxCols = 0;
+                
+                for (const item of sortedVerticalItems) {
+                    let placed = false;
+                    for (let i = 0; i < columns.length; i++) {
+                        if (columns[i] <= item.startMinutes) {
+                            item.colIndex = i;
+                            columns[i] = item.endMinutes;
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (!placed) {
+                        item.colIndex = columns.length;
+                        columns.push(item.endMinutes);
+                    }
+                    maxCols = Math.max(maxCols, item.colIndex + 1);
+                }
+
+                const trackMinWidth = Math.max(100, maxCols * (ITEM_WIDTH + 8) + 16);
+
+                const verticalItemsHtml = sortedVerticalItems.map((item) => {
+                    const topPercent = (item.startMinutes / totalMinutes) * 100;
+                    const heightPercent = ((item.endMinutes - item.startMinutes) / totalMinutes) * 100;
+                    const leftPx = 8 + item.colIndex * (ITEM_WIDTH + 8);
+                    
+                    return `
+                    <div
+                        class="task-suite-day-vertical-event task-suite-day-event ${item.priorityClass} ${item.statusClass} ${item.repeatClass}"
+                        data-action="open-calendar-task-editor"
+                        data-task-id="${item.id}"
+                        data-date="${day}"
+                        style="top:${topPercent}%;height:${heightPercent}%;left:${leftPx}px;width:${ITEM_WIDTH}px;"
+                    >
+                        <div class="task-suite-day-event-meta" style="width: 100%;">
+                            <span class="task-suite-calendar-status ${item.statusClass}" title="${item.statusLabel}">${item.statusLabel}</span>
+                            ${item.repeatLabel ? `<span class="task-suite-calendar-repeat-inline">${item.repeatLabel}</span>` : ""}
+                            ${item.noteBadge}
+                            <button class="b3-button b3-button--outline task-suite-calendar-switch-btn" title="切换状态" data-action="cycle-calendar-status" data-task-id="${item.id}" data-date="${day}" style="margin-left: auto;">${this.renderSiYuanIcon("iconRefresh", "b3-button__icon task-suite-icon-svg")}</button>
+                        </div>
+                        <div class="task-suite-day-event-title" style="white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; word-break: break-all; line-height: 1.25;">${item.rangeLabel} ${this.escapeHtml(item.title)}</div>
+                    </div>
+                `;
+                }).join("");
+                const verticalNowLine = isToday ? `
+                    <div class="task-suite-day-vertical-now-line" style="top:${(nowMinutes / totalMinutes) * 100}%;">
+                        <span class="task-suite-day-now-label">${`${now.getHours()}`.padStart(2, "0")}:${`${now.getMinutes()}`.padStart(2, "0")}</span>
+                    </div>
+                ` : "";
+                const verticalTicks = Array.from({ length: 25 }, (_, hour) => `
+                    <span class="task-suite-day-vertical-tick" style="top:${(hour / 24) * 100}%;">${`${hour}`.padStart(2, "0")}:00</span>
+                `).join("");
+                return `
+                    <div class="task-suite-day-timeline task-suite-day-timeline--vertical">
+                        <div class="task-suite-day-vertical-layout">
+                            <div class="task-suite-day-vertical-axis">${verticalTicks}</div>
+                            <div class="task-suite-day-vertical-track" style="min-width: ${trackMinWidth}px;">
+                                ${Array.from({ length: 25 }, (_, hour) => `<span class="task-suite-day-vertical-grid-line" style="top:${(hour / 24) * 100}%;"></span>`).join("")}
+                                ${verticalNowLine}
+                                ${verticalItemsHtml || `<div class="task-suite-meta" style="position:absolute;top:16px;left:16px;">当日暂无可展示任务。</div>`}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
             return `
                 <div class="task-suite-day-timeline task-suite-day-timeline--horizontal">
                     <div class="task-suite-day-time-axis">

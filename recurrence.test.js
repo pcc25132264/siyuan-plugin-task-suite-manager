@@ -50,6 +50,7 @@ function run() {
         timelineStart: "",
         timelineEnd: "",
         calendarMode: "month",
+        calendarDayAxis: "horizontal",
         calendarCursor: "2026-03-04",
         calendarMonthHeight: 70,
         ganttStart: "",
@@ -62,11 +63,7 @@ function run() {
         "2026-03-01",
         "2026-03-31"
     );
-    assert.equal(oneTimeDates.join(","), [
-        "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07", "2026-03-08", "2026-03-09",
-        "2026-03-10", "2026-03-11", "2026-03-12", "2026-03-13", "2026-03-14", "2026-03-15",
-        "2026-03-16", "2026-03-17", "2026-03-18", "2026-03-19", "2026-03-20"
-    ].join(","));
+    assert.equal(oneTimeDates.join(","), ["2026-03-04", "2026-03-20"].join(","));
 
     const dailyDates = plugin.getTaskCalendarDates(
         createTask({ repeat: "daily", startDate: "2026-03-01", dueDate: "2026-03-05" }),
@@ -149,6 +146,97 @@ function run() {
     assert.equal(mobileWeekHtml.includes("task-suite-calendar-weekdays"), false);
     assert.equal(mobileWeekHtml.includes("星期一 2"), true);
 
+    const spanTask = createTask({
+        id: "task-span",
+        repeat: "none",
+        startDate: "2026-03-04",
+        dueDate: "2026-03-06",
+        startTime: "08:00",
+        dueTime: "19:00"
+    });
+    assert.equal(plugin.shouldRenderTaskInDayView(spanTask, "2026-03-04"), true);
+    assert.equal(plugin.shouldRenderTaskInDayView(spanTask, "2026-03-05"), false);
+    assert.equal(plugin.shouldRenderTaskInDayView(spanTask, "2026-03-06"), true);
+    assert.equal(plugin.shouldRenderTaskInDayView(createTask({
+        id: "task-repeat",
+        repeat: "daily",
+        startDate: "2026-03-04",
+        dueDate: "2026-03-06"
+    }), "2026-03-05"), true);
+
+    plugin.ui.calendarMode = "month";
+    plugin.ui.calendarCursor = "2026-03-04";
+    plugin.state.tasks = [spanTask];
+    const monthSpanHtml = plugin.renderCalendarView();
+    assert.equal(monthSpanHtml.includes('data-task-id="task-span" data-date="2026-03-04"'), true);
+    assert.equal(monthSpanHtml.includes('data-task-id="task-span" data-date="2026-03-05"'), false);
+    assert.equal(monthSpanHtml.includes('data-task-id="task-span" data-date="2026-03-06"'), true);
+
+    plugin.isMobile = false;
+    plugin.ui.calendarMode = "week";
+    plugin.ui.calendarCursor = "2026-03-04";
+    plugin.state.tasks = [
+        createTask({
+            id: "task-weekly",
+            title: "周重复任务",
+            repeat: "weekly",
+            startDate: "2026-03-04",
+            dueDate: "2026-03-31"
+        })
+    ];
+    const weekHtml = plugin.renderCalendarView();
+    assert.equal(weekHtml.includes('class="task-suite-calendar-repeat-inline">每周</span>'), true);
+    assert.equal(weekHtml.includes("重复：每周"), false);
+    plugin.state.tasks = [spanTask];
+    const weekSpanHtml = plugin.renderCalendarView();
+    assert.equal(weekSpanHtml.includes('data-task-id="task-span" data-date="2026-03-04"'), true);
+    assert.equal(weekSpanHtml.includes('data-task-id="task-span" data-date="2026-03-05"'), false);
+    assert.equal(weekSpanHtml.includes('data-task-id="task-span" data-date="2026-03-06"'), true);
+
+    plugin.ui.calendarMode = "day";
+    plugin.ui.calendarCursor = "2026-03-05";
+    plugin.state.tasks = [spanTask];
+    const dayMiddleHtml = plugin.renderCalendarView();
+    assert.equal(dayMiddleHtml.includes("task-span"), false);
+    assert.equal(dayMiddleHtml.includes("task-suite-day-task-row"), false);
+
+    plugin.ui.calendarCursor = "2026-03-04";
+    plugin.state.tasks = [
+        createTask({
+            id: "task-daily",
+            title: "日重复任务",
+            repeat: "daily",
+            startDate: "2026-03-01",
+            dueDate: "2026-03-10"
+        })
+    ];
+    const dayRepeatHtml = plugin.renderCalendarView();
+    assert.equal(dayRepeatHtml.includes('class="task-suite-calendar-repeat-inline">每日</span>'), true);
+    assert.equal(dayRepeatHtml.includes("日重复任务"), true);
+    assert.equal(dayRepeatHtml.includes('data-filter="calendar-day-axis"'), true);
+    assert.equal(dayRepeatHtml.includes('value="horizontal" selected'), true);
+
+    plugin.ui.calendarDayAxis = "vertical";
+    const dayVerticalHtml = plugin.renderCalendarView();
+    assert.equal(dayVerticalHtml.includes("task-suite-day-timeline--vertical"), true);
+    assert.equal(dayVerticalHtml.includes("task-suite-day-vertical-track"), true);
+    assert.equal(dayVerticalHtml.includes("task-suite-day-vertical-event"), true);
+    assert.equal(dayVerticalHtml.includes('value="vertical" selected'), true);
+    assert.equal(dayVerticalHtml.includes(">竖轴</option>"), true);
+    assert.equal(dayVerticalHtml.includes(">数轴</option>"), false);
+
+    plugin.ui.calendarDayAxis = "horizontal";
+    plugin.renderApp = () => {};
+    plugin.handleRootChange({
+        target: {
+            dataset: { filter: "calendar-day-axis" },
+            value: "vertical"
+        }
+    });
+    assert.equal(plugin.ui.calendarDayAxis, "vertical");
+    assert.equal(plugin.normalizeCalendarDayAxis("x"), "horizontal");
+    assert.equal(plugin.normalizeCalendarDayAxis("vertical"), "vertical");
+
     const source = fs.readFileSync(INDEX_PATH, "utf8");
     const cssSource = fs.readFileSync(CSS_PATH, "utf8");
     assert.equal(source.includes("handleRootMouseOver(event)"), true);
@@ -156,6 +244,9 @@ function run() {
     assert.equal(source.includes('getWeekdayNames(mode = "full")'), true);
     assert.equal(source.includes("getWeekdayName(dateValue)"), true);
     assert.equal(source.includes("normalizeCalendarMonthHeight(value, fallback = 80)"), true);
+    assert.equal(source.includes("normalizeCalendarDayAxis(value)"), true);
+    assert.equal(source.includes("renderCalendarDayTimeline(day, tasks, axisMode)"), true);
+    assert.equal(source.includes('calendarDayAxis: this.isMobile ? "vertical" : "horizontal"'), true);
     assert.equal(source.includes("task-suite-day-now-line"), true);
     assert.equal(source.includes("showWeekdayHeader = !(this.isMobile && mode === \"week\")"), true);
     assert.equal(source.includes("renderMobileMonthTaskList(days, mapByDay, occurrenceKeySet)"), true);
@@ -163,10 +254,15 @@ function run() {
     assert.equal(source.includes('tooltip.style.overflowWrap = "anywhere";'), true);
     assert.equal(source.includes("<style>"), false);
     assert.equal(cssSource.includes(".task-suite-day-timeline {"), true);
+    assert.equal(cssSource.includes(".task-suite-day-timeline--vertical {"), true);
+    assert.equal(cssSource.includes(".task-suite-day-vertical-track {"), true);
+    assert.equal(cssSource.includes(".task-suite-day-vertical-event {"), true);
+    assert.equal(cssSource.includes("height: var(--task-suite-day-vertical-height);"), true);
     assert.equal(cssSource.includes(".task-suite-day-hour-row {"), true);
     assert.equal(cssSource.includes(".task-suite-day-event:hover"), true);
     assert.equal(cssSource.includes(".task-suite-day-event .task-suite-calendar-note-badge"), true);
     assert.equal(cssSource.includes(".task-suite-calendar-grid--week .task-suite-calendar-day-title {"), true);
+    assert.equal(cssSource.includes(".task-suite-calendar-repeat-inline {"), true);
     assert.equal(cssSource.includes(".task-suite-root.task-suite-mobile .task-suite-timeline-content {"), true);
     assert.equal(cssSource.includes(".task-suite-root.task-suite-mobile .task-suite-calendar-grid--month .task-suite-calendar-day-tasks {"), true);
     assert.equal(cssSource.includes("overflow: visible;"), true);
